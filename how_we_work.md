@@ -125,6 +125,20 @@ service = SubscriptionService()
 service = SubscriptionService(repository)
 ```
 
+## 8. Dependency Management
+
+Используем:
+
+- pyproject.toml
+- uv
+
+Не используем:
+
+- requirements.txt
+- pip freeze
+
+Все зависимости описываются только в pyproject.toml.
+
 ---
 
 # Архитектура
@@ -320,20 +334,6 @@ feature/celery-worker
 
 ---
 
-# Коммиты
-
-Формат:
-
-```text
-feat: add subscription service
-fix: handle parser timeout
-refactor: split repository layer
-test: add parser tests
-docs: update README
-```
-
----
-
 # Code Review Checklist
 
 Перед merge необходимо проверить:
@@ -392,3 +392,4 @@ docs: update README
 3. Проще расширять
 
 Если решение ухудшает хотя бы один из пунктов — требуется пересмотр.
+
