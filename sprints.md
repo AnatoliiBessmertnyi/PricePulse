@@ -44,16 +44,18 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 ## Задача 2. Базовая конфигурация проекта
 
-Статус: ⏳
+Статус: 🟡 В процессе
 
 ### Подзадачи
 
-* [ ] Pydantic Settings
-* [ ] Загрузка переменных окружения
-* [ ] Конфигурация БД
-* [ ] Конфигурация Redis
-* [ ] Конфигурация RabbitMQ
-* [ ] Конфигурация логирования
+- [x] Pydantic Settings
+- [x] Загрузка переменных окружения
+- [x] FastAPI bootstrap
+- [x] Healthcheck endpoint
+- [ ] Конфигурация БД
+- [ ] Конфигурация Redis
+- [ ] Конфигурация RabbitMQ
+- [ ] Конфигурация логирования
 
 ---
 
