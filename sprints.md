@@ -79,14 +79,14 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 ## Задача 4. Repository Layer
 
-Статус: ⏳
+Статус: ✅ Выполнено
 
 ### Подзадачи
 
-* [ ] BaseRepository
-* [ ] UserRepository
-* [ ] SubscriptionRepository
-* [ ] PriceHistoryRepository
+* [x] BaseRepository
+* [x] UserRepository
+* [x] SubscriptionRepository
+* [x] PriceHistoryRepository
 
 ---
 
