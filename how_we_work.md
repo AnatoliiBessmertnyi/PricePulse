@@ -141,6 +141,31 @@ service = SubscriptionService(repository)
 
 ---
 
+## 9. Virtual Environment
+
+Используем только:
+
+- uv
+- .venv
+
+Команды:
+
+```bash
+uv sync
+uv add <package>
+uv remove <package>
+uv run <command>
+```
+
+Не используем:
+
+- venv/
+- virtualenv
+- pip install
+- requirements.txt
+
+Файл uv.lock обязательно коммитится в репозиторий.
+
 # Архитектура
 
 ```text

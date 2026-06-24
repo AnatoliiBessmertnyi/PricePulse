@@ -50,9 +50,7 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 - [x] Pydantic Settings
 - [x] Загрузка переменных окружения
-- [x] FastAPI bootstrap
-- [x] Healthcheck endpoint
-- [ ] Конфигурация БД
+- [x] Конфигурация БД
 - [ ] Конфигурация Redis
 - [ ] Конфигурация RabbitMQ
 - [ ] Конфигурация логирования
@@ -72,10 +70,10 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 ### Дополнительно
 
-* [ ] Async SQLAlchemy 2.0
-* [ ] AsyncSession Factory
-* [ ] Alembic
-* [ ] Первая миграция
+- [x] Async SQLAlchemy 2.0
+- [x] AsyncSession Factory
+- [ ] Alembic
+- [ ] Первая миграция
 
 ---
 
