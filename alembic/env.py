@@ -1,13 +1,18 @@
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from app.core.config import settings
 from app.models.base import Base
+from app.models import (
+    ParseError,
+    PriceHistory,
+    Subscription,
+    User,
+)
 
 # импорт моделей для autogenerate
-from app.models.user import User
 
 config = context.config
 
@@ -38,7 +43,6 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    print(config.get_main_option("sqlalchemy.url"))
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",

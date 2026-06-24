@@ -1,7 +1,12 @@
+from typing import TYPE_CHECKING
+
 from sqlalchemy import BigInteger, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.subscription import Subscription
 
 
 class User(Base, TimestampMixin):
@@ -22,4 +27,8 @@ class User(Base, TimestampMixin):
         String(255),
         nullable=True,
         index=True,
+    )
+    subscriptions: Mapped[list["Subscription"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
     )

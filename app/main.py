@@ -16,6 +16,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
 @app.get("/")
 async def root() -> dict[str, str]:
     return {
@@ -23,6 +24,7 @@ async def root() -> dict[str, str]:
         "version": settings.project_version,
         "status": "running",
     }
+
 
 @app.get("/health")
 async def healthcheck() -> dict[str, str]:
