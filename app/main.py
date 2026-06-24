@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.routers import health_router
 from app.core.config import settings
 
 
@@ -16,6 +17,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.include_router(
+    health_router,
+)
+
 
 @app.get("/")
 async def root() -> dict[str, str]:
@@ -24,8 +29,3 @@ async def root() -> dict[str, str]:
         "version": settings.project_version,
         "status": "running",
     }
-
-
-@app.get("/health")
-async def healthcheck() -> dict[str, str]:
-    return {"status": "ok"}

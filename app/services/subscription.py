@@ -8,9 +8,7 @@ class SubscriptionService:
         self,
         subscription_repository: SubscriptionRepository,
     ):
-        self.subscription_repository = (
-            subscription_repository
-        )
+        self.subscription_repository = subscription_repository
 
     async def create_subscription(
         self,

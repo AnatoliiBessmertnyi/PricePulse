@@ -11,7 +11,7 @@ async def main():
     async with AsyncSessionLocal() as session:
         repo = UserRepository(session)
 
-        user = await repo.create(
+        await repo.create(
             chat_id=123456789,
             username="test_user",
         )
