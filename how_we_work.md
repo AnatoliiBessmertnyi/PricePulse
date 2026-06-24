@@ -349,6 +349,40 @@ docs: update README
 
 ---
 
+# Commit Convention
+Используем Gitmoji + Conventional Commits.
+
+Формат:
+<gitmoji> <type>: <description>
+
+Примеры:
+🎉 feat: initialize project
+✨ feat: add subscription api
+🐛 fix: handle parser timeout
+♻️ refactor: split parser service
+📝 docs: update architecture
+✅ test: add parser tests
+🔧 chore: configure docker compose
+🚀 feat: add celery worker
+🔒 security: validate incoming urls
+🔥 chore: remove deprecated code
+
+---
+
+Основные Gitmoji
+🎉 — начало проекта
+✨ — новый функционал
+🐛 — исправление ошибки
+♻️ — рефакторинг
+📝 — документация
+✅ — тесты
+🔧 — конфигурация
+🚀 — деплой или инфраструктура
+🔥 — удаление кода
+🔒 — безопасность
+
+---
+
 # Главное правило
 
 Любое решение должно делать код:
