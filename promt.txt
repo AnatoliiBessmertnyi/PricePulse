@@ -1,0 +1,39 @@
+Я работаю над проектом "PricePulse" — сервис мониторинга цен на маркетплейсах (Ozon, Wildberries, Яндекс.Маркет) с уведомлениями в Telegram.
+
+## Бизнес-логика
+Пользователи добавляют ссылки на товары через Telegram-бота. Сервис периодически парсит цены, сравнивает с предыдущими значениями и при изменении отправляет уведомление в Telegram. История цен сохраняется для построения графиков.
+
+## Технический стек (жестко зафиксирован)
+- **Backend API**: FastAPI (асинхронный)
+- **ORM**: SQLAlchemy 2.0 (async) + Alembic для миграций
+- **База данных**: PostgreSQL 16+
+- **Брокер сообщений**: RabbitMQ (основной) / Redis (для кеша и rate limiting)
+- **Фоновые задачи**: Celery (воркеры) + Celery Beat (расписание)
+- **Парсинг**: httpx (асинхронный) + BeautifulSoup4 / parsel
+- **Telegram бот**: python-telegram-bot v20+ (асинхронный)
+- **Контейнеризация**: Docker + Docker Compose
+- **Логи**: structlog (структурированные JSON логи)
+- **Тесты**: pytest + pytest-asyncio + respx (моки)
+
+## Архитектура
+Telegram Bot (webhook) → FastAPI API → Celery Beat (расписание) → RabbitMQ → Celery Workers → PostgreSQL + Redis
+Воркеры парсят маркетплейсы, сравнивают цены, отправляют уведомления через бота.
+
+## Ключевые модели данных
+- **User**: id, chat_id (Telegram), username, created_at
+- **Subscription**: id, user_id, url, last_price, last_check, is_active, metadata (JSONB)
+- **PriceHistory**: id, subscription_id, price, checked_at (партиционирование по месяцам)
+- **ParseError**: id, subscription_id, error_text, created_at
+
+## Требования к коду
+- Чистая архитектура с разделением на слои (API → Service → Repository)
+- Асинхронные драйверы БД (asyncpg)
+- Типизация (mypy строгий режим)
+- Graceful shutdown для всех сервисов
+- Retry-логика с экспоненциальной задержкой
+
+## Текущий статус проекта
+[ЗДЕСЬ БУДЕТ ВСТАВЛЯТЬСЯ ИНФОРМАЦИЯ О ТЕКУЩЕМ СПРИНТЕ И ВЫПОЛНЕННЫХ ЗАДАЧАХ]
+
+## Что требуется от тебя в этой сессии
+[ЗДЕСЬ БУДЕТ ВСТАВЛЯТЬСЯ КОНКРЕТНАЯ ЗАДАЧА]
