@@ -45,6 +45,8 @@ PostgreSQL + Redis
 * FastAPI
 * SQLAlchemy 2.0 Async
 * PostgreSQL
+* Alembic
+* Pydantic Settings
 
 ## Очереди и кеш
 
@@ -117,7 +119,26 @@ cp .env.example .env
 ## Запуск
 
 ```bash
-docker compose up --build
+docker compose up -d
+```
+```bash
+uv sync
+```
+```bash
+uv run uvicorn app.main:app --reload
+```
+---
+
+## Миграции
+
+Создать миграцию:
+```bash
+uv run alembic revision --autogenerate -m "message"
+```
+
+Применить миграции:
+```bash
+uv run alembic upgrade head
 ```
 
 ---

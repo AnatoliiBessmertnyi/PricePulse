@@ -39,6 +39,17 @@ class Settings(BaseSettings):
             f"{self.postgres_db}"
         )
 
+    @property
+    def sync_postgres_url(self) -> str:
+        return (
+            f"postgresql+psycopg://"
+            f"{self.postgres_user}:"
+            f"{self.postgres_password}@"
+            f"{self.postgres_host}:"
+            f"{self.postgres_port}/"
+            f"{self.postgres_db}"
+        )
+
 
 @lru_cache
 def get_settings() -> Settings:

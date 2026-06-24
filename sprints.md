@@ -59,21 +59,21 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 ## Задача 3. PostgreSQL и SQLAlchemy
 
-Статус: ⏳
+Статус: 🟡 В процессе
 
 ### Модели
 
-* [ ] User
+* [x] User
 * [ ] Subscription
 * [ ] PriceHistory
 * [ ] ParseError
 
 ### Дополнительно
 
-- [x] Async SQLAlchemy 2.0
-- [x] AsyncSession Factory
-- [ ] Alembic
-- [ ] Первая миграция
+* [x] Async SQLAlchemy 2.0
+* [x] AsyncSession Factory
+* [x] Alembic
+* [x] Первая миграция
 
 ---
 
