@@ -10,9 +10,7 @@ class PriceService:
         self,
         price_history_repository: PriceHistoryRepository,
     ):
-        self.price_history_repository = (
-            price_history_repository
-        )
+        self.price_history_repository = price_history_repository
 
     async def save_price(
         self,

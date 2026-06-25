@@ -1,9 +1,12 @@
+import json
 from decimal import Decimal
 
-from app.parsers.http_client import MarketplaceHttpClient
-from app.parsers.base import BaseParser
-from app.parsers.schemas import ProductData
+from bs4 import BeautifulSoup
 
+from app.parsers.base import BaseParser
+from app.parsers.http_client import MarketplaceHttpClient
+from app.parsers.schemas import ProductData
+from app.parsers.exceptions import ProductDataNotFoundError
 
 class OzonParser(BaseParser):
     def __init__(
@@ -24,9 +27,10 @@ class OzonParser(BaseParser):
             html,
         )
 
-        current_price = self._extract_price(
-            html,
-        )
+        # current_price = self._extract_price(
+        #     html,
+        # )
+        current_price = Decimal("0")
 
         return ProductData(
             product_name=product_name,
@@ -37,7 +41,45 @@ class OzonParser(BaseParser):
         self,
         html: str,
     ) -> str:
-        raise NotImplementedError
+        soup = BeautifulSoup(
+            html,
+            "html.parser",
+        )
+
+        script = soup.find(
+            "script",
+            attrs={
+                "type": "application/ld+json",
+            },
+        )
+
+        if script is None:
+            raise ValueError(
+                "Ozon product schema not found",
+            )
+
+        if script.string is None:
+            raise ValueError(
+                "Ozon product schema is empty",
+            )
+
+        product_data = json.loads(
+            script.string,
+        )
+
+        product_name = product_data.get(
+            "name",
+        )
+
+        if not isinstance(
+            product_name,
+            str,
+        ):
+            raise ValueError(
+                "Product name not found",
+            )
+
+        return product_name
 
     def _extract_price(
         self,

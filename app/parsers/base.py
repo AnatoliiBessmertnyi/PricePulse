@@ -8,5 +8,4 @@ class BaseParser(ABC):
     async def parse(
         self,
         product_url: str,
-    ) -> ProductData:
-        ...
+    ) -> ProductData: ...

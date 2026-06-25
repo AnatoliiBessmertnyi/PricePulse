@@ -1,0 +1,2 @@
+class ProductDataNotFoundError(Exception):
+    pass

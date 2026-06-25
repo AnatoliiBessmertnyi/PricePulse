@@ -25,7 +25,7 @@ async def create_subscription(
     data: SubscriptionCreate,
     service: SubscriptionService = Depends(
         get_subscription_service,
-    )
+    ),
 ) -> SubscriptionResponse:
     subscription = await service.create_subscription(
         user_id=data.user_id,
@@ -49,10 +49,8 @@ async def get_user_subscriptions(
         get_subscription_service,
     ),
 ) -> list[SubscriptionResponse]:
-    subscriptions = (
-        await service.get_user_subscriptions(
-            user_id,
-        )
+    subscriptions = await service.get_user_subscriptions(
+        user_id,
     )
 
     return [
