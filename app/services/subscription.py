@@ -17,12 +17,16 @@ class SubscriptionService:
         product_url: str,
         target_price: float | None = None,
     ):
-        return await self.subscription_repository.create(
+        subscription = await self.subscription_repository.create(
             user_id=user_id,
             marketplace=marketplace,
             product_url=product_url,
             target_price=target_price,
         )
+
+        await self.subscription_repository.session.commit()
+
+        return subscription
 
     async def get_user_subscriptions(
         self,

@@ -20,7 +20,11 @@ class UserService:
         if user:
             return user
 
-        return await self.user_repository.create(
+        user = await self.user_repository.create(
             chat_id=chat_id,
             username=username,
         )
+
+        await self.user_repository.session.commit()
+
+        return user
