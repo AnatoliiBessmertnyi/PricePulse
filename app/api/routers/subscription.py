@@ -37,3 +37,26 @@ async def create_subscription(
     return SubscriptionResponse.model_validate(
         subscription,
     )
+
+@router.get(
+    "/{user_id}",
+    response_model=list[SubscriptionResponse],
+)
+async def get_user_subscriptions(
+    user_id: int,
+    service: SubscriptionService = Depends(
+        get_subscription_service,
+    ),
+) -> list[SubscriptionResponse]:
+    subscriptions = (
+        await service.get_user_subscriptions(
+            user_id,
+        )
+    )
+
+    return [
+        SubscriptionResponse.model_validate(
+            subscription,
+        )
+        for subscription in subscriptions
+    ]

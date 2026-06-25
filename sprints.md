@@ -104,19 +104,19 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 ## Задача 6. FastAPI
 
-Статус: ⏳
+Статус: 🟡 В процессе
 
 ### Эндпоинты
 
-* [ ] POST /api/v1/subscriptions
-* [ ] GET /api/v1/subscriptions
-* [ ] GET /health
+- [x] POST /api/v1/subscriptions
+- [x] GET /api/v1/subscriptions
+- [x] GET /health
 
 ### Дополнительно
 
-* [ ] Pydantic схемы
-* [ ] Валидация URL
-* [ ] Dependency Injection
+- [x] Pydantic схемы
+- [x] Валидация URL
+- [x] Dependency Injection
 
 ---
 
