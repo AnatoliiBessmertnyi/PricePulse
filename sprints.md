@@ -92,24 +92,24 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 ## Задача 5. Service Layer
 
-Статус: 🟡 В процессе
+Статус: ✅ Выполнено
 
 ### Подзадачи
 
 * [x] SubscriptionService
-* [ ] PriceService
+* [x] PriceService
 * [x] UserService
 
 ---
 
 ## Задача 6. FastAPI
 
-Статус: 🟡 В процессе
+Статус: ✅ Выполнено
 
 ### Эндпоинты
 
 - [x] POST /api/v1/subscriptions
-- [x] GET /api/v1/subscriptions
+- [x] GET /api/v1/subscriptions/{user_id}
 - [x] GET /health
 
 ### Дополнительно

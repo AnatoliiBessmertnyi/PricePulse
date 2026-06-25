@@ -38,6 +38,7 @@ async def create_subscription(
         subscription,
     )
 
+
 @router.get(
     "/{user_id}",
     response_model=list[SubscriptionResponse],
