@@ -11,7 +11,8 @@ class MarketplaceHttpClient:
     async def get(
         self,
         url: str,
-    ) -> str:
+    ) -> tuple[str, str]:
+        """Делает GET-запрос и возвращает (HTML-контент, финальный URL после редиректов)."""
         response = await self.http_client.get(
             url,
             headers={
@@ -25,4 +26,4 @@ class MarketplaceHttpClient:
 
         response.raise_for_status()
 
-        return response.text
+        return response.text, str(response.url)

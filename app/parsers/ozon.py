@@ -1,12 +1,13 @@
 import json
-from decimal import Decimal
+import re
+from decimal import Decimal, InvalidOperation
 
 from bs4 import BeautifulSoup
 
 from app.parsers.base import BaseParser
 from app.parsers.http_client import MarketplaceHttpClient
 from app.parsers.schemas import ProductData
-from app.parsers.exceptions import ProductDataNotFoundError
+
 
 class OzonParser(BaseParser):
     def __init__(
@@ -19,7 +20,7 @@ class OzonParser(BaseParser):
         self,
         product_url: str,
     ) -> ProductData:
-        html = await self.http_client.get(
+        html, final_url = await self.http_client.get(
             product_url,
         )
 
@@ -27,10 +28,16 @@ class OzonParser(BaseParser):
             html,
         )
 
-        # current_price = self._extract_price(
-        #     html,
-        # )
-        current_price = Decimal("0")
+        current_price = self._extract_price(
+            html,
+            final_url,
+        )
+
+        if current_price is None:
+            raise ValueError(
+                f"Price not found for product: {product_name}. "
+                f"Ozon may have changed the layout or blocked the request.",
+            )
 
         return ProductData(
             product_name=product_name,
@@ -81,8 +88,54 @@ class OzonParser(BaseParser):
 
         return product_name
 
-    def _extract_price(
-        self,
-        html: str,
-    ) -> Decimal:
-        raise NotImplementedError
+    def _extract_price(self, html: str, product_url: str) -> Decimal | None:
+        """Извлекает цену товара, находя SKU из URL и ища цену рядом с ним в HTML."""
+        sku = self._extract_sku_from_url(product_url)
+        if not sku:
+            return None
+
+        # Ищем SKU, допуская любые пробелы вокруг двоеточия и опциональные кавычки
+        sku_pattern = re.compile(rf'"sku"\s*:\s*"?{sku}"?')
+        
+        # Находим все вхождения SKU в HTML
+        matches = list(sku_pattern.finditer(html))
+        if not matches:
+            return None
+
+        # Перебираем все вхождения, пока не найдем то, где есть цена
+        for match in matches:
+            sku_pos = match.start()
+            # Берем кусок HTML размером 3000 символов после найденного SKU
+            chunk = html[sku_pos : sku_pos + 3000]
+
+            # Проверяем, есть ли в этом чанке слово "price"
+            if '"price"' not in chunk:
+                continue
+
+            # Пытаемся найти цену как число (например, "price": 3301)
+            price_match = re.search(r'"price"\s*:\s*(\d+)', chunk)
+            if price_match:
+                return Decimal(price_match.group(1))
+
+            # Fallback: ищем цену как строку (например, "price": "3 301 ₽")
+            price_match = re.search(r'"price"\s*:\s*"([\d\s\u202f,\.]+)', chunk)
+            if price_match:
+                price_str = re.sub(r"[^\d,\.]", "", price_match.group(1)).replace(",", ".")
+                if price_str:
+                    try:
+                        return Decimal(price_str)
+                    except InvalidOperation:
+                        pass
+
+        return None
+
+    def _extract_sku_from_url(
+        self, 
+        product_url: str,
+    ) -> str | None:
+        """Извлекает SKU товара из URL.
+        URL формат: https://www.ozon.ru/product/krossovki-air-force-1-blood-2751160853/
+        """
+        # Ищем число из 5-12 цифр в конце пути перед слэшем
+        match = re.search(r"-(\d{5,12})/?", product_url)
+        return match.group(1) if match else None

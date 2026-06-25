@@ -122,20 +122,20 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 ## Задача 7. Парсер маркетплейса
 
-Статус: ⏳
+Статус: ✅ Выполнено
 
 ### Подзадачи
 
-* [ ] BaseParser
-* [ ] ParserFactory
-* [ ] OzonParser
+* [x] BaseParser
+* [x] ParserFactory
+* [x] OzonParser
 
 ### Результат
 
 Получение:
 
-* [ ] Названия товара
-* [ ] Цены товара
+* [x] Названия товара
+* [x] Цены товара
 
 ---
 
