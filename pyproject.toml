@@ -71,6 +71,3 @@ testpaths = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
-
-[tool.uv.scripts]
-worker = "celery -A app.workers.celery_app:celery_app worker --loglevel=info"

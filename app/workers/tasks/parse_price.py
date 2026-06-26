@@ -1,12 +1,19 @@
-from app.core.celery import celery_app
+from structlog import get_logger
+
+from app.workers.settings import TASK_PARSE_PRICE
+from app.workers.celery_app import celery_app
+
+
+logger = get_logger()
 
 
 @celery_app.task(
-    name="pricepulse.parse_price",
+    name=TASK_PARSE_PRICE,
 )
 def parse_price(
     subscription_id: int,
 ) -> None:
-    print(
-        f"Parse subscription {subscription_id}",
+    logger.info(
+        "parse_price_started",
+        subscription_id=subscription_id,
     )
