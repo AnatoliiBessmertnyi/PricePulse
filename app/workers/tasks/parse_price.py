@@ -8,6 +8,11 @@ from app.workers.settings import TASK_PARSE_PRICE
 
 @celery_app.task(
     name=TASK_PARSE_PRICE,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_jitter=True,
+    max_retries=3,
 )
 def parse_price(
     subscription_id: int,
@@ -26,3 +31,5 @@ async def _parse_price(
         await service.parse_subscription(
             subscription_id=subscription_id,
         )
+
+        await session.commit()

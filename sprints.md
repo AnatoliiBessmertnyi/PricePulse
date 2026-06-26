@@ -87,6 +87,7 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 * [x] UserRepository
 * [x] SubscriptionRepository
 * [x] PriceHistoryRepository
+* [x] ParseErrorRepository
 
 ---
 
@@ -99,6 +100,7 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 * [x] SubscriptionService
 * [x] PriceService
 * [x] UserService
+* [x] PriceParsingService
 
 ---
 
@@ -142,15 +144,22 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 ## Задача 8. Celery
 
-Статус: ⏳
+Статус: ✅ Выполнено
 
 ### Подзадачи
 
-* [ ] Celery App
-* [ ] RabbitMQ Broker
-* [ ] parse_price_task()
-* [ ] Retry логика
-* [ ] Graceful Shutdown
+* [x] Celery App
+* [x] RabbitMQ Broker
+* [x] parse_price_task()
+* [x] Retry логика
+* [x] Graceful Shutdown
+
+### Дополнительно
+
+* [x] Task acknowledgment (acks_late)
+* [x] Prefetch multiplier (1)
+* [x] Error tracking в БД
+* [x] Singleton HTTP client
 
 ---
 
