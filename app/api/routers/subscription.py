@@ -1,15 +1,15 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import (
+    get_price_service,
     get_subscription_service,
 )
 from app.api.schemas.subscription import (
     SubscriptionCreate,
     SubscriptionResponse,
 )
-from app.services.subscription import (
-    SubscriptionService,
-)
+from app.services.price import PriceService
+from app.services.subscription import SubscriptionService
 
 router = APIRouter(
     prefix="/api/v1/subscriptions",
@@ -34,11 +34,12 @@ async def create_subscription(
         product_url=str(data.product_url),
         target_price=data.target_price,
     )
-    
+
     # Lazy import для избежания circular dependency
     from app.workers.tasks.parse_price import parse_price
+
     parse_price.delay(subscription.id)
-    
+
     return SubscriptionResponse.model_validate(
         subscription,
     )
@@ -63,3 +64,49 @@ async def get_user_subscriptions(
         )
         for subscription in subscriptions
     ]
+
+
+@router.get(
+    "/{subscription_id}/prices",
+    response_model=list[dict],
+)
+async def get_price_history(
+    subscription_id: int,
+    price_service: PriceService = Depends(get_price_service),
+) -> list[dict]:
+    """Получить историю цен для подписки"""
+    history = await price_service.get_price_history(subscription_id)
+    return [
+        {
+            "id": record.id,
+            "subscription_id": record.subscription_id,
+            "price": float(record.price),
+            "created_at": record.created_at.isoformat(),
+        }
+        for record in history
+    ]
+
+
+@router.post(
+    "/{subscription_id}/parse",
+    status_code=202,
+)
+async def trigger_manual_parsing(
+    subscription_id: int,
+    subscription_service: SubscriptionService = Depends(get_subscription_service),
+) -> dict:
+    """Ручной запуск парсинга для подписки"""
+    # Проверяем, что подписка существует
+    subscription = await subscription_service.get_subscription(subscription_id)
+    if not subscription:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+
+    # Ставим задачу в очередь
+    from app.workers.tasks.parse_price import parse_price
+
+    parse_price.delay(subscription_id)
+
+    return {
+        "status": "parsing_queued",
+        "subscription_id": subscription_id,
+    }

@@ -19,3 +19,11 @@ class PriceService:
             subscription_id=subscription_id,
             price=price,
         )
+
+    async def get_price_history(
+        self,
+        subscription_id: int,
+    ):
+        return await self._price_history_repository.get_by_subscription_id(
+            subscription_id,
+        )

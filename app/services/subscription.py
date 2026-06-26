@@ -35,3 +35,11 @@ class SubscriptionService:
         return await self.subscription_repository.get_by_user_id(
             user_id,
         )
+
+    async def get_subscription(
+        self,
+        subscription_id: int,
+    ):
+        return await self.subscription_repository.get(
+            subscription_id,
+        )
