@@ -35,4 +35,5 @@ celery_app.autodiscover_tasks(
 def on_worker_shutdown(**kwargs):
     """Закрываем http клиент при остановке воркера."""
     import asyncio
+
     asyncio.run(close_http_client())

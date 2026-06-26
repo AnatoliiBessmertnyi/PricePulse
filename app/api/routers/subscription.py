@@ -20,6 +20,7 @@ router = APIRouter(
 @router.post(
     "",
     response_model=SubscriptionResponse,
+    status_code=201,
 )
 async def create_subscription(
     data: SubscriptionCreate,
@@ -33,7 +34,11 @@ async def create_subscription(
         product_url=str(data.product_url),
         target_price=data.target_price,
     )
-
+    
+    # Lazy import для избежания circular dependency
+    from app.workers.tasks.parse_price import parse_price
+    parse_price.delay(subscription.id)
+    
     return SubscriptionResponse.model_validate(
         subscription,
     )
@@ -52,7 +57,6 @@ async def get_user_subscriptions(
     subscriptions = await service.get_user_subscriptions(
         user_id,
     )
-
     return [
         SubscriptionResponse.model_validate(
             subscription,

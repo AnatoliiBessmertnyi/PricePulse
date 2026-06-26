@@ -1,4 +1,3 @@
-
 from app.parsers.base import BaseParser
 from app.parsers.constants import Marketplace
 from app.parsers.http_client import MarketplaceHttpClient

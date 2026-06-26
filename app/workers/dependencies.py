@@ -16,11 +16,11 @@ def get_price_parsing_service(
     subscription_repository = SubscriptionRepository(session)
     price_history_repository = PriceHistoryRepository(session)
     parse_error_repository = ParseErrorRepository(session)
-    
+
     httpx_client = get_http_client()
     marketplace_http_client = MarketplaceHttpClient(http_client=httpx_client)
     parser_factory = ParserFactory(http_client=marketplace_http_client)
-    
+
     price_service = PriceService(
         price_history_repository=price_history_repository,
     )

@@ -51,7 +51,7 @@ class PriceParsingService:
             price = product_data.current_price
         except ParserError as e:
             logger.exception("price_parsing_failed", subscription_id=subscription_id)
-            
+
             await self._parse_error_repository.create(
                 subscription_id=subscription_id,
                 error_type=type(e).__name__,
@@ -59,8 +59,10 @@ class PriceParsingService:
             )
             return
         except Exception as e:
-            logger.exception("unexpected_parsing_error", subscription_id=subscription_id)
-            
+            logger.exception(
+                "unexpected_parsing_error", subscription_id=subscription_id
+            )
+
             await self._parse_error_repository.create(
                 subscription_id=subscription_id,
                 error_type=type(e).__name__,
