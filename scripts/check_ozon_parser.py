@@ -13,21 +13,17 @@ async def main() -> None:
         timeout=30.0,
         follow_redirects=True,
     ) as http_client:
-        marketplace_http_client = MarketplaceHttpClient(
-            http_client=http_client,
-        )
-
         parser = OzonParser(
-            http_client=marketplace_http_client,
+            http_client=MarketplaceHttpClient(
+                http_client=http_client,
+            ),
         )
 
         product_data = await parser.parse(
             PRODUCT_URL,
         )
 
-        print(
-            product_data,
-        )
+        print(product_data)
 
 
 if __name__ == "__main__":
