@@ -1,7 +1,8 @@
+name: pricepulse
+
 services:
   postgres:
     image: postgres:16
-    container_name: pricepulse_postgres
     restart: unless-stopped
     env_file:
       - .env
@@ -17,7 +18,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: pricepulse_redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -31,7 +31,6 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: pricepulse_rabbitmq
     restart: unless-stopped
     env_file:
       - .env

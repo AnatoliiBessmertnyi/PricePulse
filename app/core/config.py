@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +29,7 @@ class Settings(BaseSettings):
     rabbitmq_default_user: str
     rabbitmq_default_pass: str
 
+    @computed_field
     @property
     def postgres_url(self) -> str:
         return (
@@ -39,6 +41,7 @@ class Settings(BaseSettings):
             f"{self.postgres_db}"
         )
 
+    @computed_field
     @property
     def sync_postgres_url(self) -> str:
         return (
@@ -48,6 +51,17 @@ class Settings(BaseSettings):
             f"{self.postgres_host}:"
             f"{self.postgres_port}/"
             f"{self.postgres_db}"
+        )
+
+    @computed_field
+    @property
+    def rabbitmq_url(self) -> str:
+        return (
+            f"amqp://"
+            f"{self.rabbitmq_default_user}:"
+            f"{self.rabbitmq_default_pass}@"
+            f"{self.rabbitmq_host}:"
+            f"{self.rabbitmq_port}//"
         )
 
 
