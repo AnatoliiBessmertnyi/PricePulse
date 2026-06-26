@@ -1,10 +1,9 @@
-from structlog import get_logger
+import asyncio
 
-from app.workers.settings import TASK_PARSE_PRICE
+from app.core.database import get_db
 from app.workers.celery_app import celery_app
-
-
-logger = get_logger()
+from app.workers.dependencies import get_price_parsing_service
+from app.workers.settings import TASK_PARSE_PRICE
 
 
 @celery_app.task(
@@ -13,7 +12,17 @@ logger = get_logger()
 def parse_price(
     subscription_id: int,
 ) -> None:
-    logger.info(
-        "parse_price_started",
-        subscription_id=subscription_id,
+    asyncio.run(
+        _parse_price(subscription_id),
     )
+
+
+async def _parse_price(
+    subscription_id: int,
+) -> None:
+    async for session in get_db():
+        service = get_price_parsing_service(session)
+
+        await service.parse_subscription(
+            subscription_id=subscription_id,
+        )
