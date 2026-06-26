@@ -1,9 +1,11 @@
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.redis import get_redis
 from app.repositories.price_history import PriceHistoryRepository
 from app.repositories.subscription import (
     SubscriptionRepository,
@@ -22,6 +24,10 @@ async def get_session() -> AsyncGenerator[
 ]:
     async for session in get_db():
         yield session
+
+
+async def get_redis_client() -> Redis:
+    return await get_redis()
 
 
 def get_user_repository(
@@ -65,8 +71,7 @@ def get_subscription_service(
 
 
 def get_price_service(
-    repository: PriceHistoryRepository = Depends(
-        get_price_history_repository,
-    ),
+    repository: PriceHistoryRepository = Depends(get_price_history_repository),
+    redis_client: Redis = Depends(get_redis_client),
 ) -> PriceService:
-    return PriceService(repository)
+    return PriceService(repository, redis_client)

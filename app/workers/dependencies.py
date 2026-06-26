@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.redis import get_redis_sync
 from app.parsers.factory import ParserFactory
 from app.parsers.http_client import MarketplaceHttpClient
 from app.repositories.parse_error import ParseErrorRepository
@@ -16,13 +17,13 @@ def get_price_parsing_service(
     subscription_repository = SubscriptionRepository(session)
     price_history_repository = PriceHistoryRepository(session)
     parse_error_repository = ParseErrorRepository(session)
-
     httpx_client = get_http_client()
     marketplace_http_client = MarketplaceHttpClient(http_client=httpx_client)
     parser_factory = ParserFactory(http_client=marketplace_http_client)
-
+    redis_client_sync = get_redis_sync()
     price_service = PriceService(
         price_history_repository=price_history_repository,
+        redis_client_sync=redis_client_sync,
     )
 
     return PriceParsingService(

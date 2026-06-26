@@ -96,12 +96,10 @@ async def trigger_manual_parsing(
     subscription_service: SubscriptionService = Depends(get_subscription_service),
 ) -> dict:
     """Ручной запуск парсинга для подписки"""
-    # Проверяем, что подписка существует
     subscription = await subscription_service.get_subscription(subscription_id)
     if not subscription:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
-    # Ставим задачу в очередь
     from app.workers.tasks.parse_price import parse_price
 
     parse_price.delay(subscription_id)
@@ -109,4 +107,36 @@ async def trigger_manual_parsing(
     return {
         "status": "parsing_queued",
         "subscription_id": subscription_id,
+    }
+
+
+@router.get(
+    "/{subscription_id}/latest-price",
+    response_model=dict,
+)
+async def get_latest_price(
+    subscription_id: int,
+    price_service: PriceService = Depends(get_price_service),
+) -> dict:
+    """Получить последнюю цену для подписки (из кэша или БД)"""
+    # Проверяем кэш
+    if price_service._redis:
+        cache_key = f"price:latest:{subscription_id}"
+        cached_price = await price_service._redis.get(cache_key)
+        if cached_price:
+            return {
+                "subscription_id": subscription_id,
+                "price": float(cached_price),
+                "source": "cache",
+            }
+
+    # Если нет в кэше, берем из БД
+    price = await price_service.get_latest_price(subscription_id)
+    if price is None:
+        raise HTTPException(status_code=404, detail="Price not found")
+
+    return {
+        "subscription_id": subscription_id,
+        "price": float(price),
+        "source": "database",
     }
