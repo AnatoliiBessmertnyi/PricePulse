@@ -60,7 +60,7 @@ class PriceService:
             cached_price = await self._redis.get(cache_key)
             if cached_price:
                 return Decimal(cached_price)
-        
+
         if self._redis_sync:
             cache_key = f"price:latest:{subscription_id}"
             cached_price = self._redis_sync.get(cache_key)

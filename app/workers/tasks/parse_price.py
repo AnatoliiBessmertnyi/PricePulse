@@ -14,17 +14,11 @@ from app.workers.settings import TASK_PARSE_PRICE
     retry_jitter=True,
     max_retries=3,
 )
-def parse_price(
-    subscription_id: int,
-) -> None:
-    asyncio.run(
-        _parse_price(subscription_id),
-    )
+def parse_price(subscription_id: int) -> None:
+    asyncio.run(_parse_price(subscription_id))
 
 
-async def _parse_price(
-    subscription_id: int,
-) -> None:
+async def _parse_price(subscription_id: int) -> None:
     async for session in get_db():
         service = get_price_parsing_service(session)
 

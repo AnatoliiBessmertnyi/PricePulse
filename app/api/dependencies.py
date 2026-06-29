@@ -1,5 +1,3 @@
-from collections.abc import AsyncGenerator
-
 from fastapi import Depends
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,54 +16,34 @@ from app.services.subscription import (
 from app.services.user import UserService
 
 
-async def get_session() -> AsyncGenerator[
-    AsyncSession,
-    None,
-]:
-    async for session in get_db():
-        yield session
-
-
 async def get_redis_client() -> Redis:
     return await get_redis()
 
 
-def get_user_repository(
-    session: AsyncSession = Depends(
-        get_session,
-    ),
-) -> UserRepository:
+def get_user_repository(session: AsyncSession = Depends(get_db)) -> UserRepository:
     return UserRepository(session)
 
 
 def get_subscription_repository(
-    session: AsyncSession = Depends(
-        get_session,
-    ),
+    session: AsyncSession = Depends(get_db),
 ) -> SubscriptionRepository:
     return SubscriptionRepository(session)
 
 
 def get_price_history_repository(
-    session: AsyncSession = Depends(
-        get_session,
-    ),
+    session: AsyncSession = Depends(get_db),
 ) -> PriceHistoryRepository:
     return PriceHistoryRepository(session)
 
 
 def get_user_service(
-    repository: UserRepository = Depends(
-        get_user_repository,
-    ),
+    repository: UserRepository = Depends(get_user_repository),
 ) -> UserService:
     return UserService(repository)
 
 
 def get_subscription_service(
-    repository: SubscriptionRepository = Depends(
-        get_subscription_repository,
-    ),
+    repository: SubscriptionRepository = Depends(get_subscription_repository),
 ) -> SubscriptionService:
     return SubscriptionService(repository)
 

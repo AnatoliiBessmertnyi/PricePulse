@@ -2,16 +2,10 @@ import httpx
 
 
 class MarketplaceHttpClient:
-    def __init__(
-        self,
-        http_client: httpx.AsyncClient,
-    ) -> None:
+    def __init__(self, http_client: httpx.AsyncClient) -> None:
         self.http_client = http_client
 
-    async def get(
-        self,
-        url: str,
-    ) -> tuple[str, str]:
+    async def get(self, url: str) -> tuple[str, str]:
         """Делает GET-запрос и возвращает (HTML-контент, финальный URL после редиректов)."""
         response = await self.http_client.get(
             url,

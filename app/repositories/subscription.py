@@ -18,3 +18,12 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         result = await self.session.execute(stmt)
 
         return list(result.scalars().all())
+
+    async def get_all(
+        self,
+    ) -> list[Subscription]:
+        stmt = select(Subscription)
+
+        result = await self.session.execute(stmt)
+
+        return list(result.scalars().all())

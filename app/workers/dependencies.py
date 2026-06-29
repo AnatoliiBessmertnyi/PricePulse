@@ -8,6 +8,7 @@ from app.repositories.price_history import PriceHistoryRepository
 from app.repositories.subscription import SubscriptionRepository
 from app.services.price import PriceService
 from app.services.price_parsing import PriceParsingService
+from app.services.subscription import SubscriptionService
 from app.workers.http_client_manager import get_http_client
 
 
@@ -31,4 +32,14 @@ def get_price_parsing_service(
         parser_factory=parser_factory,
         price_service=price_service,
         parse_error_repository=parse_error_repository,
+    )
+
+
+def get_subscription_service(
+    session: AsyncSession,
+) -> SubscriptionService:
+    subscription_repository = SubscriptionRepository(session)
+
+    return SubscriptionService(
+        subscription_repository=subscription_repository,
     )

@@ -1,3 +1,4 @@
+from app.models.subscription import Subscription
 from app.repositories.subscription import (
     SubscriptionRepository,
 )
@@ -43,3 +44,6 @@ class SubscriptionService:
         return await self.subscription_repository.get(
             subscription_id,
         )
+
+    async def get_all(self) -> list[Subscription]:
+        return await self.subscription_repository.get_all()
