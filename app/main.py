@@ -8,6 +8,9 @@ from app.api.routers.health import (
 from app.api.routers.subscription import (
     router as subscription_router,
 )
+from app.api.routers.user import (
+    router as user_router,
+)
 from app.core.config import settings
 
 
@@ -28,6 +31,10 @@ app.include_router(
 
 app.include_router(
     subscription_router,
+)
+
+app.include_router(
+    user_router,
 )
 
 

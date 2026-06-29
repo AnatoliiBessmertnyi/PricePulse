@@ -112,6 +112,21 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: uv run python -m app.bot.main
+    volumes:
+      - .:/app
+      - venv:/app/.venv
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+
 volumes:
   postgres_data:
   redis_data:

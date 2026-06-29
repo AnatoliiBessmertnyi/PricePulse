@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     rabbitmq_default_user: str
     rabbitmq_default_pass: str
 
+    # Telegram Bot настройки
+    telegram_bot_token: str | None = None
+    fastapi_base_url: str = "http://api:8000"
+
     @computed_field
     @property
     def postgres_url(self) -> str:
