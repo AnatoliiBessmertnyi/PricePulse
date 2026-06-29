@@ -22,9 +22,10 @@ PricePulse — сервис мониторинга цен на маркетпл�
 Система:
 
 1. Сохраняет подписку.
-2. Периодически проверяет цену.
+2. Периодически проверяет цену (каждые 15 минут).
 3. Сохраняет историю изменений.
-4. Отправляет уведомления при изменении цены.
+4. Кэширует последнюю цену в Redis (TTL 1 час).
+5. Отправляет уведомления при изменении цены.
 
 ---
 
@@ -37,7 +38,7 @@ PricePulse — сервис мониторинга цен на маркетпл�
            Telegram Bot
                     │
                     ▼
-                FastAPI
+                FastAPI ──────────► Redis (кэш)
                     │
           ┌─────────┴─────────┐
           │                   │
@@ -45,15 +46,17 @@ PricePulse — сервис мониторинга цен на маркетпл�
      PostgreSQL           RabbitMQ
                               │
                               ▼
+                        Celery Beat
+                        (каждые 15 мин)
+                              │
+                              ▼
                        Celery Worker
                               │
                               ▼
-                           Parser
+                     Playwright Browser
                               │
                               ▼
                          Marketplace
-
-          Redis используется для кеша
 ```
 
 ---
@@ -94,11 +97,25 @@ FastAPI не занимается парсингом.
 
 Назначение:
 
-* кеширование последних цен
-* rate limiting
+* кеширование последних цен (TTL 1 час)
+* rate limiting (будет добавлено)
 * временные данные
 
 Redis может быть очищен без потери данных.
+
+### Структура кэша
+
+```text
+price:latest:{subscription_id} → "3009"
+```
+
+Ключ содержит ID подписки, значение — последнюю цену в виде строки.
+
+#### Клиенты
+- FastAPI использует redis.asyncio.Redis (асинхронный клиент)
+- Celery Worker использует redis.Redis (синхронный клиент)
+
+Оба клиента работают с одним Redis-сервером. Разделение обусловлено тем, что Celery задачи выполняются в синхронном контексте и не должны зависеть от event loop FastAPI.
 
 ---
 
@@ -114,29 +131,77 @@ Redis может быть очищен без потери данных.
 
 ---
 
+## Celery Beat
+
+Планировщик периодических задач.
+
+Запускает задачу `check_all_subscriptions` каждые 15 минут.
+
+Задача:
+
+1. Получает все активные подписки из PostgreSQL
+2. Для каждой подписки ставит задачу `parse_price` в очередь
+
+### Isolated Async Engine
+
+Каждая задача `check_all_subscriptions` создаёт собственный async SQLAlchemy engine вместо использования глобального. Это необходимо для избежания конфликтов event loop, так как Celery использует `asyncio.run()` внутри синхронных задач, а глобальный engine привязан к event loop, созданному при импорте модуля.
+
+```python
+async def _check_all_subscriptions() -> None:
+    engine = create_async_engine(settings.postgres_url, ...)
+    async_session_factory = async_sessionmaker(bind=engine, ...)
+    
+    try:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(Subscription).where(Subscription.is_active)
+            )
+            subscriptions = result.scalars().all()
+            
+            for subscription in subscriptions:
+                parse_price.delay(subscription.id)
+    finally:
+        await engine.dispose()
+```
+
+---
+
 ## Celery Worker
-
-Исполняет фоновые задачи.
-
-Примеры:
-
-* парсинг товаров
-* обновление цен
-* отправка уведомлений
-
-### Конфигурация
-
-* `worker_prefetch_multiplier=1` — воркер берет только 1 задачу за раз
-* `task_acks_late=True` — задача подтверждается только после выполнения
-* `task_reject_on_worker_lost=True` — задача возвращается в очередь при падении воркера
-* `autoretry_for=(Exception,)` — автоматические ретраи при ошибках
-* `retry_backoff=True` — экспоненциальная задержка между ретраями
 
 ### HTTP Client
 
-Воркер использует singleton `httpx.AsyncClient` для всех HTTP-запросов к маркетплейсам. Клиент создается один раз и переиспользуется для всех задач, что снижает оверхед на создание соединений.
+Воркер использует **Playwright** (headless Chromium) для парсинга маркетплейсов.
 
-При остановке воркера клиент корректно закрывается через сигнал `worker_shutdown`.
+Playwright необходим для обхода продвинутой защиты Ozon:
+
+* JavaScript challenges
+* TLS fingerprinting (JA3/JA4)
+* Блокировки по User-Agent и fingerprint
+* Бесконечные 307 редиректы при использовании обычных HTTP-клиентов
+
+Альтернативы, которые были отброшены:
+
+* `httpx` — блокируется Ozon (403 Forbidden)
+* `curl_cffi` с impersonate — блокируется Ozon (403 Forbidden)
+
+Браузер запускается в режиме singleton и переиспользуется между задачами. При остановке воркера браузер корректно закрывается через сигнал `worker_shutdown`.
+
+Конфигурация запуска:
+
+```python
+_browser = await _playwright.chromium.launch(
+    headless=True,
+    args=["--no-sandbox", "--disable-setuid-sandbox"],
+)
+```
+
+Флаги **--no-sandbox** и **--disable-setuid-sandbox** обязательны для запуска Chromium в Docker-контейнере от root.
+
+### Производительность
+
+- Парсинг одной подписки занимает 6-9 секунд
+- При интервале 15 минут один воркер успевает обработать ~100 подписок за цикл
+- Для масштабирования до 2000 подписок потребуется пул из 5-10 браузеров (отложено)
 
 ---
 
@@ -349,7 +414,13 @@ created_at
 
 ### Celery и асинхронность
 
-Celery задачи синхронные, но внутри используют `asyncio.run()` для вызова асинхронных сервисов. Это компромисс, позволяющий использовать асинхронный стек (SQLAlchemy, httpx) в синхронных Celery задачах.
+Celery задачи синхронные, но внутри используют `asyncio.run()` для вызова асинхронных сервисов. Это компромисс, позволяющий использовать асинхронный стек (SQLAlchemy, Playwright) в синхронных Celery задачах.
+
+Для избежания конфликтов event loop:
+
+* Воркер запускается с `--pool=prefork` (каждый процесс имеет свой event loop)
+* Задача `check_all_subscriptions` создаёт собственный async engine вместо использования глобального
+* Синхронный Redis-клиент используется в воркере, асинхронный — в FastAPI
 
 ---
 
@@ -501,13 +572,45 @@ Ozon перешел на React Server Components и больше не отдае
 
 Accepted
 
+## ADR-006
+
+Решение:
+
+Использовать Playwright (headless Chromium) вместо HTTP-клиентов для парсинга Ozon.
+
+Причина:
+
+Ozon использует продвинутую защиту от ботов, которая блокирует обычные HTTP-запросы:
+
+* `httpx` возвращает 403 Forbidden
+* `curl_cffi` с impersonate="chrome131" также возвращает 403
+* Защита проверяет TLS fingerprint (JA3/JA4) и JavaScript challenges
+
+Playwright запускает реальный браузер Chromium, который проходит все проверки.
+
+Компромиссы:
+
+* Парсинг занимает 6-9 секунд вместо 1-2 секунд для HTTP-запроса
+* Требует установки Chromium и системных зависимостей в Docker
+* Потребляет больше памяти (~200-300 МБ на браузер)
+
+Альтернативы, которые были отброшены:
+
+* `httpx` — блокируется Ozon
+* `curl_cffi` — блокируется Ozon
+* Residential proxy — платное решение, отложено до необходимости масштабирования
+
+Статус:
+
+Accepted
+
 # Будущие архитектурные решения
 
 Список решений, которые потребуется принять позже:
 
 * хранение графиков цен;
-* многопроцессный парсинг;
-* антибот-защита маркетплейсов;
+* пул браузеров для параллельного парсинга;
+* residential proxy для масштабирования;
 * Prometheus;
 * Grafana;
 * Kubernetes;

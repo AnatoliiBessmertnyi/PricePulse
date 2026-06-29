@@ -36,7 +36,10 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 * [x] PostgreSQL 16 контейнер
 * [x] Redis контейнер
 * [x] RabbitMQ контейнер
-* [ ] FastAPI контейнер
+* [x] FastAPI контейнер
+* [x] Celery Worker контейнер
+* [x] Celery Beat контейнер
+* [x] Init-контейнер для миграций
 * [x] Проверить сетевое взаимодействие контейнеров
 * [x] Проверить сохранение данных через volumes
 
@@ -112,6 +115,9 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 - [x] POST /api/v1/subscriptions
 - [x] GET /api/v1/subscriptions/{user_id}
+- [x] GET /api/v1/subscriptions/{subscription_id}/prices
+- [x] POST /api/v1/subscriptions/{subscription_id}/parse
+- [x] GET /api/v1/subscriptions/{subscription_id}/latest-price
 - [x] GET /health
 
 ### Дополнительно
@@ -119,6 +125,7 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 - [x] Pydantic схемы
 - [x] Валидация URL
 - [x] Dependency Injection
+- [x] Redis кэш для latest-price
 
 ---
 
@@ -183,8 +190,11 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 ### Подзадачи
 
 * [x] Подключение Redis
-* [x] Кеширование последней цены
-* [x] Кеширование времени проверки
+* [x] Асинхронный Redis клиент для FastAPI (`redis.asyncio.Redis`)
+* [x] Синхронный Redis клиент для Celery Worker (`redis.Redis`)
+* [x] Кеширование последней цены (TTL 1 час)
+* [x] Ключ кэша: `price:latest:{subscription_id}`
+* [x] Endpoint `/latest-price` с проверкой кэша перед БД
 
 ---
 
@@ -257,18 +267,20 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 Все пункты ниже должны быть выполнены:
 
-* [ ] Пользователь добавляет ссылку через Telegram
-* [ ] FastAPI сохраняет подписку
-* [ ] Создается Celery-задача
-* [ ] RabbitMQ доставляет задачу воркеру
-* [ ] Воркер получает данные из БД
-* [ ] Парсер получает цену товара
-* [ ] Цена сохраняется в PostgreSQL
-* [ ] История цен сохраняется
-* [ ] Периодический мониторинг цен работает
-* [ ] Уведомления об изменении цены отправляются в Telegram
-* [ ] Система запускается через Docker Compose
-* [ ] Healthcheck показывает состояние сервисов
+* [x] Пользователь добавляет ссылку через API (Telegram — в следующей задаче)
+* [x] FastAPI сохраняет подписку
+* [x] Создается Celery-задача
+* [x] RabbitMQ доставляет задачу воркеру
+* [x] Воркер получает данные из БД
+* [x] Парсер получает цену товара
+* [x] Цена сохраняется в PostgreSQL
+* [x] История цен сохраняется
+* [x] Периодический мониторинг цен работает (каждые 15 минут)
+* [ ] Уведомления об изменении цены отправляются в Telegram (Задача 11)
+* [x] Система запускается через Docker Compose
+* [x] Healthcheck показывает состояние сервисов
+* [x] Последняя цена кэшируется в Redis
+* [x] Playwright обходит защиту Ozon
 
 ---
 

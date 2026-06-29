@@ -23,17 +23,31 @@ PricePulse — сервис мониторинга цен на маркетпл�
 # Архитектура
 
 ```text
-Telegram Bot
-      ↓
-    FastAPI
-      ↓
-    Celery
-      ↓
-   RabbitMQ
-      ↓
-    Worker
-      ↓
-PostgreSQL + Redis
+                Telegram
+                    │
+                    ▼
+           Telegram Bot
+                    │
+                    ▼
+                FastAPI ──────────► Redis (кэш)
+                    │
+          ┌─────────┴─────────┐
+          │                   │
+          ▼                   ▼
+     PostgreSQL           RabbitMQ
+                              │
+                              ▼
+                        Celery Beat
+                        (каждые 15 мин)
+                              │
+                              ▼
+                       Celery Worker
+                              │
+                              ▼
+                     Playwright Browser
+                              │
+                              ▼
+                         Marketplace
 ```
 
 ---
@@ -51,8 +65,8 @@ PostgreSQL + Redis
 ## Очереди и кеш
 
 * RabbitMQ
-* Redis
-* Celery
+* Redis (кэш последних цен, TTL 1 час)
+* Celery + Celery Beat
 
 ## Telegram
 
@@ -60,9 +74,8 @@ PostgreSQL + Redis
 
 ## Парсинг
 
-* httpx
+* Playwright (headless Chromium)
 * BeautifulSoup4
-* parsel
 
 ## Инфраструктура
 
@@ -85,14 +98,14 @@ PostgreSQL + Redis
 
 ```text
 app/
-├── api/
-├── bot/
-├── core/
-├── models/
-├── parsers/
-├── repositories/
-├── services/
-└── workers/
+├── api/              # FastAPI endpoints
+├── bot/              # Telegram Bot
+├── core/             # Config, database, redis
+├── models/           # SQLAlchemy models
+├── parsers/          # Marketplace parsers
+├── repositories/     # Data access layer
+├── services/         # Business logic
+└── workers/          # Celery tasks & beat
 ```
 
 ---
@@ -121,15 +134,27 @@ cp .env.example .env
 ```bash
 docker compose up -d
 ```
-```bash
-uv sync
-```
-```bash
-uv run uvicorn app.main:app --reload
-```
+
+Команда запускает все сервисы:
+- PostgreSQL 16
+- Redis 7
+- RabbitMQ 3
+- FastAPI (порт 8000)
+- Celery Worker
+- Celery Beat
+- Init-контейнер для миграций
+
+API доступен по адресу: http://localhost:8000
+
+Swagger UI: http://localhost:8000/docs
+
 ---
 
 ## Миграции
+
+Миграции применяются автоматически при запуске через init-контейнер.
+
+Для ручного управления:
 
 Создать миграцию:
 ```bash
@@ -138,8 +163,19 @@ uv run alembic revision --autogenerate -m "message"
 
 Применить миграции:
 ```bash
-uv run alembic upgrade head
+docker compose exec api uv run alembic upgrade head
 ```
+
+---
+
+# API Endpoints
+
+* `POST /api/v1/subscriptions` — создать подписку
+* `GET /api/v1/subscriptions/{user_id}` — получить подписки пользователя
+* `GET /api/v1/subscriptions/{subscription_id}/prices` — история цен
+* `POST /api/v1/subscriptions/{subscription_id}/parse` — ручной запуск парсинга
+* `GET /api/v1/subscriptions/{subscription_id}/latest-price` — последняя цена (из кэша)
+* `GET /health` — проверка здоровья сервисов
 
 ---
 
@@ -157,30 +193,38 @@ how_we_work.md
 sprints.md
 ```
 
+Архитектурные решения:
+
+```text
+architecture.md
+```
+
 ---
 
 # Roadmap
 
-## Sprint 1
+## Sprint 1 (текущий)
 
-* Инфраструктура
-* PostgreSQL
-* FastAPI
-* Celery
-* Первый парсер Ozon
-* Telegram Bot
+* ✅ Инфраструктура (Docker, PostgreSQL, Redis, RabbitMQ)
+* ✅ FastAPI с REST API
+* ✅ Celery Worker + Celery Beat
+* ✅ Парсер Ozon (Playwright)
+* ✅ Периодический мониторинг цен (каждые 15 минут)
+* ✅ Кэширование в Redis
+* ⏳ Telegram Bot
+* ⏳ Логирование и мониторинг
 
 ## Sprint 2
 
 * Уведомления о снижении цены
 * Поддержка Wildberries
-* Redis Cache
+* Rate limiting
 
 ## Sprint 3
 
-* История цен
-* Графики
+* История цен с графиками
 * Поддержка Яндекс.Маркет
+* Масштабирование (пул браузеров, residential proxy)
 
 ---
 
@@ -190,4 +234,6 @@ sprints.md
 
 🚧 Активная разработка
 
-Проект находится на этапе построения базовой инфраструктуры.
+Проект находится на этапе построения Telegram Bot и системы уведомлений.
+
+Базовая инфраструктура и парсинг цен работают.
