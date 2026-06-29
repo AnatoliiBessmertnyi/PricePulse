@@ -1,17 +1,15 @@
-import httpx
+from playwright.async_api import Page
 
 
 class MarketplaceHttpClient:
-    """HTTP клиент для работы с маркетплейсами."""
+    """HTTP клиент для работы с маркетплейсами через headless браузер."""
 
-    def __init__(self, http_client: httpx.AsyncClient):
-        self.http_client = http_client
+    def __init__(self, page: Page):
+        self.page = page
 
     async def get(self, url: str) -> tuple[str, str]:
         """Делает GET-запрос и возвращает (HTML-контент, финальный URL)."""
-        response = await self.http_client.get(
-            url,
-            follow_redirects=True,
-        )
-        response.raise_for_status()
-        return response.text, str(response.url)
+        await self.page.goto(url, wait_until="networkidle")
+        html = await self.page.content()
+        final_url = self.page.url
+        return html, final_url

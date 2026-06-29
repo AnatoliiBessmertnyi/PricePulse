@@ -1,29 +1,21 @@
 import asyncio
 
-import httpx
-
 from app.parsers.http_client import MarketplaceHttpClient
 from app.parsers.ozon import OzonParser
+from app.workers.http_client_manager import close_browser, get_page
 
 PRODUCT_URL = "https://ozon.ru/t/lwPpFFD"
 
 
 async def main() -> None:
-    async with httpx.AsyncClient(
-        timeout=30.0,
-        follow_redirects=True,
-    ) as http_client:
-        parser = OzonParser(
-            http_client=MarketplaceHttpClient(
-                http_client=http_client,
-            ),
-        )
+    page = await get_page()
+    parser = OzonParser(http_client=MarketplaceHttpClient(page=page))
 
-        product_data = await parser.parse(
-            PRODUCT_URL,
-        )
-
+    try:
+        product_data = await parser.parse(PRODUCT_URL)
         print(product_data)
+    finally:
+        await close_browser()
 
 
 if __name__ == "__main__":

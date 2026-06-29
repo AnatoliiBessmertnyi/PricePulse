@@ -18,12 +18,10 @@ def parse_price(subscription_id: int) -> None:
     asyncio.run(_parse_price(subscription_id))
 
 
-async def _parse_price(subscription_id: int) -> None:
+async def _parse_price(
+    subscription_id: int,
+) -> None:
     async for session in get_db():
-        service = get_price_parsing_service(session)
-
-        await service.parse_subscription(
-            subscription_id=subscription_id,
-        )
-
+        service = await get_price_parsing_service(session)
+        await service.parse_subscription(subscription_id=subscription_id)
         await session.commit()
