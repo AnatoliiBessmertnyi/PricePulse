@@ -2,9 +2,9 @@ from celery import Celery
 from celery.signals import worker_shutdown
 
 from app.core.config import settings
+from app.workers.beat_schedule import beat_schedule
 from app.workers.http_client_manager import close_http_client
 from app.workers.settings import DEFAULT_QUEUE
-from app.workers.beat_schedule import beat_schedule
 
 celery_app = Celery(
     "pricepulse",
