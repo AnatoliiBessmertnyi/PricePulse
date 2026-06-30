@@ -2,13 +2,17 @@
 
 ## Текущее состояние проекта
 
-**Статус:** Инициализация проекта
+**Статус:** Sprint 1 — Завершение базовой функциональности
 
 ### Выполнено
 
 - [x] Инициализация проекта
 - [x] Документация проекта
 - [x] Docker-инфраструктура
+- [x] Полная интеграция API + Worker + Parser
+- [x] CLI клиент для тестирования без Telegram
+- [x] Конфигурируемый интервал проверки цен
+- [x] Структурированное логирование HTTP запросов
 
 
 ---
@@ -42,6 +46,7 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 * [x] Init-контейнер для миграций
 * [x] Проверить сетевое взаимодействие контейнеров
 * [x] Проверить сохранение данных через volumes
+* [x] Docker Compose profiles для опциональных сервисов (bot)
 
 ---
 
@@ -57,6 +62,8 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 - [x] Конфигурация Redis
 - [x] Конфигурация RabbitMQ
 - [x] Конфигурация логирования
+- [x] Конфигурируемый интервал проверки цен (`PRICE_CHECK_INTERVAL`)
+- [x] Валидация минимального интервала (60 секунд)
 
 ---
 
@@ -67,7 +74,7 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 ### Модели
 
 * [x] User
-* [x] Subscription
+* [x] Subscription (с полями `last_check_at`, `last_success_at`)
 * [x] PriceHistory
 * [x] ParseError
 
@@ -76,7 +83,8 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 * [x] Async SQLAlchemy 2.0
 * [x] AsyncSession Factory
 * [x] Alembic
-* [x] Первая миграция
+* [x] Миграции (создание таблиц, добавление полей времени)
+* [x] Корректные SQLAlchemy relationships с `back_populates`
 
 ---
 
@@ -88,7 +96,7 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 * [x] BaseRepository
 * [x] UserRepository
-* [x] SubscriptionRepository
+* [x] SubscriptionRepository (с методом `delete`)
 * [x] PriceHistoryRepository
 * [x] ParseErrorRepository
 
@@ -100,10 +108,10 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 ### Подзадачи
 
-* [x] SubscriptionService
+* [x] SubscriptionService (с методом `delete_subscription`)
 * [x] PriceService
 * [x] UserService
-* [x] PriceParsingService
+* [x] PriceParsingService (с раздельным обновлением `last_check_at` и `last_success_at`)
 
 ---
 
@@ -113,19 +121,22 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 ### Эндпоинты
 
-- [x] POST /api/v1/subscriptions
-- [x] GET /api/v1/subscriptions/{user_id}
-- [x] GET /api/v1/subscriptions/{subscription_id}/prices
-- [x] POST /api/v1/subscriptions/{subscription_id}/parse
-- [x] GET /api/v1/subscriptions/{subscription_id}/latest-price
+- [x] POST /api/v1/users — регистрация пользователя
+- [x] POST /api/v1/subscriptions — создание подписки
+- [x] GET /api/v1/subscriptions/{user_id} — список подписок пользователя
+- [x] GET /api/v1/subscriptions/{subscription_id}/prices — история цен
+- [x] POST /api/v1/subscriptions/{subscription_id}/parse — ручной запуск парсинга
+- [x] GET /api/v1/subscriptions/{subscription_id}/latest-price — последняя цена
+- [x] DELETE /api/v1/subscriptions/{subscription_id} — удаление подписки
 - [x] GET /health
 
 ### Дополнительно
 
-- [x] Pydantic схемы
+- [x] Pydantic схемы (с полями `last_check_at`, `last_success_at`)
 - [x] Валидация URL
 - [x] Dependency Injection
 - [x] Redis кэш для latest-price
+- [x] RequestLoggingMiddleware для структурированного логирования HTTP запросов
 
 ---
 
@@ -177,9 +188,10 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 ### Подзадачи
 
 * [x] Создание подписки
-* [x] Постановка задачи в очередь
-* [x] Первичный парсинг товара
+* [x] Первичный парсинг товара (через Beat, без дублирования задач)
 * [x] Сохранение цены
+* [x] Обновление `current_price`, `product_name`, `last_success_at` при успехе
+* [x] Обновление `last_check_at` при любой попытке (включая ошибки)
 
 ---
 
@@ -207,7 +219,8 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 - [x] Celery Beat (планировщик задач)
 - [x] Задача `check_all_subscriptions` — получает все активные подписки
 - [x] Массовая постановка задач на парсинг
-- [x] Настройка интервала проверки (каждые 15 минут)
+- [x] Конфигурируемый интервал проверки через `PRICE_CHECK_INTERVAL`
+- [x] Автоматическая конвертация секунд в crontab/timedelta
 - [ ] Rate limiting (защита от блокировок) — отложено
 - [x] Обработка ошибок и логирование
 - [x] Интеграция Playwright для обхода защиты Ozon
@@ -215,7 +228,7 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 ### Результат
 
 - Автоматический мониторинг цен по всем активным подпискам
-- История цен обновляется регулярно (каждые 15 минут)
+- История цен обновляется регулярно (настраивается через `PRICE_CHECK_INTERVAL`)
 - Playwright успешно обходит JavaScript challenges
 - Парсинг занимает 6-9 секунд на подписку
 - Цены кэшируются в Redis с TTL 1 час
@@ -223,7 +236,7 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 ### Технические детали
 
-- **Celery Beat** отправляет задачу `check_all_subscriptions` каждые 15 минут
+- **Celery Beat** отправляет задачу `check_all_subscriptions` с настраиваемым интервалом
 - **Worker** получает все активные подписки и ставит задачи `parse_price`
 - **Playwright** запускает headless Chromium для обхода защиты Ozon
 - **Redis** кэширует последнюю цену с TTL 1 час
@@ -231,35 +244,69 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 ---
 
-## Задача 11. Telegram Bot
+## Задача 10.6. CLI клиент для тестирования
 
-Статус: ⏳
+Статус: ✅ Выполнено
+
+### Описание
+
+Временная замена Telegram бота для тестирования функциональности без необходимости настройки VPN/прокси для доступа к Telegram API.
 
 ### Команды
 
-* [ ] /start
-* [ ] /add
-* [ ] /list
+* [x] `start` — регистрация пользователя в системе
+* [x] `add <ссылка>` — добавление подписки на товар (с извлечением URL из текста)
+* [x] `list` — список подписок с отображением ID, цены, времени последней проверки
+* [x] `delete <id>` — удаление подписки
+* [x] `price <id>` — получение текущей цены из кэша
+* [x] `help` — справка по командам
+* [x] `exit` — выход из приложения
 
 ### Интеграция
 
-* [ ] Вызов FastAPI
-* [ ] Отображение списка подписок
+* [x] HTTP клиент для взаимодействия с FastAPI
+* [x] Переиспользование утилиты извлечения URL из `app/bot/utils/url_parser.py`
+* [x] Отображение раздельной информации о времени (`last_check_at`, `last_success_at`)
+
+---
+
+## Задача 11. Telegram Bot
+
+Статус: ⏳ В процессе
+
+### Команды
+
+* [x] /start — код реализован, требуется VPN/прокси для тестирования
+* [x] /add — код реализован, требуется VPN/прокси для тестирования
+* [x] /list — код реализован, требуется VPN/прокси для тестирования
+
+### Интеграция
+
+* [x] HTTP клиент для вызова FastAPI
+* [x] Отображение списка подписок
+* [ ] Настройка VPN/прокси для доступа к Telegram API
+* [ ] Тестирование в реальном Telegram
+
+### Примечание
+
+Код бота полностью реализован и переиспользует ту же логику, что и CLI клиент. Для запуска требуется настройка VPN/прокси на рабочем ПК (на персональном ПК уже настроено через WSL).
 
 ---
 
 ## Задача 12. Логирование и мониторинг
 
-Статус: ⏳
+Статус: ✅ Частично выполнено
 
 ### Подзадачи
 
-* [ ] structlog
-* [ ] JSON logs
-* [ ] Healthchecks
-* [ ] Проверка PostgreSQL
-* [ ] Проверка Redis
-* [ ] Проверка RabbitMQ
+* [x] structlog
+* [x] JSON logs
+* [x] RequestLoggingMiddleware для HTTP запросов
+* [x] Отключение дублирующего uvicorn access log
+* [x] Healthchecks
+* [x] Проверка PostgreSQL
+* [x] Проверка Redis
+* [x] Проверка RabbitMQ
 
 ---
 
@@ -269,18 +316,21 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 
 * [x] Пользователь добавляет ссылку через API (Telegram — в следующей задаче)
 * [x] FastAPI сохраняет подписку
-* [x] Создается Celery-задача
+* [x] Парсинг запускается автоматически через Beat (без дублирования задач)
 * [x] RabbitMQ доставляет задачу воркеру
 * [x] Воркер получает данные из БД
 * [x] Парсер получает цену товара
 * [x] Цена сохраняется в PostgreSQL
 * [x] История цен сохраняется
-* [x] Периодический мониторинг цен работает (каждые 15 минут)
+* [x] Периодический мониторинг цен работает (конфигурируемый интервал)
+* [x] Подписки можно удалять
+* [x] CLI клиент для тестирования без Telegram
 * [ ] Уведомления об изменении цены отправляются в Telegram (Задача 11)
 * [x] Система запускается через Docker Compose
 * [x] Healthcheck показывает состояние сервисов
 * [x] Последняя цена кэшируется в Redis
 * [x] Playwright обходит защиту Ozon
+* [x] Раздельное отслеживание времени последней попытки и успешной проверки
 
 ---
 
@@ -294,8 +344,10 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 * [ ] Поддержка Яндекс.Маркет
 * [ ] Графики изменения цен
 * [ ] Авторизация через Telegram Login Widget
-* [ ] Rate Limiting
+* [ ] Rate Limiting (защита от блокировок Ozon)
 * [ ] Prometheus
 * [ ] Grafana
 * [ ] CI/CD
 * [ ] Kubernetes
+* [ ] Настройка VPN/прокси для Telegram бота на рабочем ПК
+* [ ] Улучшение парсера Ozon (обработка блокировок и изменения layout)
