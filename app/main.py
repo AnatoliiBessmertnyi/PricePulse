@@ -7,6 +7,9 @@ from app.api.routers.health import router as health_router
 from app.api.routers.subscription import router as subscription_router
 from app.api.routers.user import router as user_router
 from app.core.config import settings
+from app.core.logging import setup_logging
+
+setup_logging(settings.log_level)
 
 
 @asynccontextmanager
@@ -15,13 +18,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title=settings.project_name,
-    version=settings.project_version,
-    lifespan=lifespan,
+    title=settings.project_name, version=settings.project_version, lifespan=lifespan
 )
 
 app.add_middleware(RequestLoggingMiddleware)
-
 app.include_router(health_router)
 app.include_router(subscription_router)
 app.include_router(user_router)

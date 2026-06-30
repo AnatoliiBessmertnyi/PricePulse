@@ -1,11 +1,10 @@
-import structlog
-from decimal import Decimal
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.bot.client import HTTPClient
+from app.core.logging import get_logger
 
-logger = structlog.get_logger()
+logger = get_logger(__name__)
 
 
 async def list_command(
@@ -14,7 +13,7 @@ async def list_command(
 ) -> None:
     """
     Обработчик команды /list
-    
+
     Показывает список подписок пользователя.
     """
     if not update.effective_user:
@@ -74,12 +73,12 @@ async def list_command(
                 price_value = float(current_price)
                 response += f"   💰 {price_value:,.2f} ₽\n"
             else:
-                response += f"   💰 Цена не определена\n"
+                response += "   💰 Цена не определена\n"
             response += f"   🔗 {product_url}\n"
-            
+
             if not is_active:
-                response += f"   ⚠️ Неактивна\n"
-            
+                response += "   ⚠️ Неактивна\n"
+
             response += "\n"
 
         # Telegram имеет лимит на длину сообщения (4096 символов)
@@ -87,7 +86,7 @@ async def list_command(
         if len(response) > 4000:
             chunks = []
             current_chunk = f"📋 Ваши подписки ({len(subscriptions)}):\n\n"
-            
+
             for idx, sub in enumerate(subscriptions, 1):
                 product_name = sub.get("product_name") or "Без названия"
                 product_url = sub.get("product_url")
@@ -102,12 +101,12 @@ async def list_command(
                     price_value = float(current_price)
                     item += f"   💰 {price_value:,.2f} ₽\n"
                 else:
-                    item += f"   💰 Цена не определена\n"
+                    item += "   💰 Цена не определена\n"
                 item += f"   🔗 {product_url}\n"
-                
+
                 if not is_active:
-                    item += f"   ⚠️ Неактивна\n"
-                
+                    item += "   ⚠️ Неактивна\n"
+
                 item += "\n"
 
                 if len(current_chunk) + len(item) > 4000:
@@ -115,7 +114,7 @@ async def list_command(
                     current_chunk = item
                 else:
                     current_chunk += item
-            
+
             if current_chunk:
                 chunks.append(current_chunk)
 

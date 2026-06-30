@@ -1,11 +1,11 @@
-import sys
-
 import structlog
 
 from app.bot.client import HTTPClient
 from app.bot.utils.url_parser import clean_and_validate_url
+from app.core.logging import get_logger, setup_logging
 
-logger = structlog.get_logger()
+setup_logging("INFO")
+logger = get_logger(__name__)
 
 
 def setup_logging():
@@ -59,7 +59,9 @@ class CLIApp:
         """Команда add — добавление подписки"""
         if not args:
             print("\nИспользование: add <ссылка на товар>")
-            print("Пример: add https://www.ozon.ru/product/smartfon-samsung-galaxy-a54-256gb/\n")
+            print(
+                "Пример: add https://www.ozon.ru/product/smartfon-samsung-galaxy-a54-256gb/\n"
+            )
             return
 
         text = " ".join(args)
@@ -67,12 +69,14 @@ class CLIApp:
 
         if not url:
             print("\n❌ Не удалось найти корректную ссылку в сообщении.")
-            print("Убедитесь, что вы отправили ссылку на товар с поддерживаемого маркетплейса (ozon.ru).\n")
+            print(
+                "Убедитесь, что вы отправили ссылку на товар с поддерживаемого маркетплейса (ozon.ru).\n"
+            )
             return
 
         if not marketplace:
-            print(f"\n❌ Маркетплейс не поддерживается.")
-            print(f"Поддерживаемые маркетплейсы: Ozon (ozon.ru)")
+            print("\n❌ Маркетплейс не поддерживается.")
+            print("Поддерживаемые маркетплейсы: Ozon (ozon.ru)")
             print(f"Отправленная ссылка: {url}\n")
             return
 
@@ -105,9 +109,9 @@ class CLIApp:
             logger.error("add_failed", error=str(e))
             error_message = str(e)
             if "400" in error_message:
-                print(f"\n❌ Ошибка: некорректные данные. Проверьте ссылку.\n")
+                print("\n❌ Ошибка: некорректные данные. Проверьте ссылку.\n")
             elif "404" in error_message:
-                print(f"\n❌ Ошибка: товар не найден. Проверьте ссылку.\n")
+                print("\n❌ Ошибка: товар не найден. Проверьте ссылку.\n")
             else:
                 print(f"\n❌ Произошла ошибка: {e}\n")
 
@@ -145,44 +149,57 @@ class CLIApp:
                     price_value = float(current_price)
                     print(f"   💰 {price_value:,.2f} ₽")
                 else:
-                    print(f"   💰 Цена не определена")
-                
+                    print("   💰 Цена не определена")
+
                 # Показываем информацию о времени
                 if last_success:
                     from datetime import datetime
+
                     try:
                         if isinstance(last_success, str):
-                            success_time = datetime.fromisoformat(last_success.replace('Z', '+00:00'))
+                            success_time = datetime.fromisoformat(
+                                last_success.replace("Z", "+00:00")
+                            )
                         else:
                             success_time = last_success
-                        print(f"   🕐 Последняя проверка: {success_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                        print(
+                            f"   🕐 Последняя проверка: {success_time.strftime('%Y-%m-%d %H:%M:%S')}"
+                        )
                     except:
                         print(f"   🕐 Последняя проверка: {last_success}")
-                    
+
                     if last_check and last_check != last_success:
                         try:
                             if isinstance(last_check, str):
-                                check_time = datetime.fromisoformat(last_check.replace('Z', '+00:00'))
+                                check_time = datetime.fromisoformat(
+                                    last_check.replace("Z", "+00:00")
+                                )
                             else:
                                 check_time = last_check
-                            print(f"   ⚠️ Последняя попытка: {check_time.strftime('%Y-%m-%d %H:%M:%S')} (без успеха)")
+                            print(
+                                f"   ⚠️ Последняя попытка: {check_time.strftime('%Y-%m-%d %H:%M:%S')} (без успеха)"
+                            )
                         except:
                             print(f"   ⚠️ Последняя попытка: {last_check} (без успеха)")
                 else:
-                    print(f"   🕐 Цена ещё не получена")
+                    print("   🕐 Цена ещё не получена")
                     if last_check:
                         try:
                             if isinstance(last_check, str):
-                                check_time = datetime.fromisoformat(last_check.replace('Z', '+00:00'))
+                                check_time = datetime.fromisoformat(
+                                    last_check.replace("Z", "+00:00")
+                                )
                             else:
                                 check_time = last_check
-                            print(f"   ⚠️ Последняя попытка: {check_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                            print(
+                                f"   ⚠️ Последняя попытка: {check_time.strftime('%Y-%m-%d %H:%M:%S')}"
+                            )
                         except:
                             print(f"   ⚠️ Последняя попытка: {last_check}")
-                
+
                 print(f"   🔗 {product_url}")
                 if not is_active:
-                    print(f"   ⚠️ Неактивна")
+                    print("   ⚠️ Неактивна")
                 print()
 
         except Exception as e:
@@ -209,18 +226,18 @@ class CLIApp:
                     "GET",
                     f"/api/v1/subscriptions/{subscription_id}/latest-price",
                 )
-                
+
                 if response.status_code == 404:
                     print(f"\n⏳ Цена для подписки #{subscription_id} ещё не получена.")
                     print("Подождите 10-15 секунд и попробуйте снова.\n")
                     return
-                
+
                 response.raise_for_status()
                 data = response.json()
-                
+
                 price = data.get("price")
                 source = data.get("source", "unknown")
-                
+
                 print(f"\n💰 Подписка #{subscription_id}: {price:,.2f} ₽")
                 print(f"📊 Источник: {source}\n")
 
@@ -335,6 +352,7 @@ def main():
     setup_logging()
 
     import asyncio
+
     asyncio.run(main_loop())
 
 

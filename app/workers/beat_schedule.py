@@ -7,7 +7,7 @@ interval_seconds = settings.price_check_interval
 
 if interval_seconds % 60 == 0:
     from celery.schedules import crontab
-    
+
     interval_minutes = interval_seconds // 60
     if interval_minutes == 1:
         schedule = crontab(minute="*")

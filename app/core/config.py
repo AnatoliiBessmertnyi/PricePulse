@@ -6,9 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
     project_name: str = "PricePulse"
@@ -34,12 +32,23 @@ class Settings(BaseSettings):
 
     price_check_interval: int = 900
 
+    log_level: str = "INFO"
+
     @field_validator("price_check_interval")
     @classmethod
     def validate_price_check_interval(cls, v: int) -> int:
         if v < 60:
             raise ValueError("price_check_interval must be at least 60 seconds")
         return v
+
+    @field_validator("log_level")
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        v_upper = v.upper()
+        if v_upper not in valid_levels:
+            raise ValueError(f"log_level must be one of {valid_levels}")
+        return v_upper
 
     @computed_field
     @property

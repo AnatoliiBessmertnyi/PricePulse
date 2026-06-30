@@ -1,11 +1,11 @@
-import structlog
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.bot.client import HTTPClient
 from app.bot.utils.url_parser import clean_and_validate_url
+from app.core.logging import get_logger
 
-logger = structlog.get_logger()
+logger = get_logger(__name__)
 
 
 async def add_command(
@@ -14,7 +14,7 @@ async def add_command(
 ) -> None:
     """
     Обработчик команды /add <url>
-    
+
     Добавляет подписку на товар.
     Поддерживает текст с URL (например, "Смотри что я нашел! https://ozon.ru/...")
     """
@@ -109,7 +109,7 @@ async def add_command(
             url=url,
             error=str(e),
         )
-        
+
         # Обрабатываем специфичные ошибки
         error_message = str(e)
         if "400" in error_message:
@@ -121,9 +121,7 @@ async def add_command(
                 "Ошибка: товар не найден. Проверьте ссылку."
             )
         elif "500" in error_message:
-            await update.message.reply_text(
-                "Ошибка сервера. Попробуйте позже."
-            )
+            await update.message.reply_text("Ошибка сервера. Попробуйте позже.")
         else:
             await update.message.reply_text(
                 "Произошла ошибка при добавлении подписки. Попробуйте позже."

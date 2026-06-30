@@ -23,7 +23,8 @@ router = APIRouter(
     status_code=201,
 )
 async def create_subscription(
-    data: SubscriptionCreate, service: SubscriptionService = Depends(get_subscription_service)
+    data: SubscriptionCreate,
+    service: SubscriptionService = Depends(get_subscription_service),
 ) -> SubscriptionResponse:
     subscription = await service.create_subscription(
         user_id=data.user_id,
@@ -131,6 +132,7 @@ async def get_latest_price(
         "source": "database",
     }
 
+
 @router.delete(
     "/{subscription_id}",
     status_code=204,
@@ -144,4 +146,3 @@ async def delete_subscription(
     deleted = await service.delete_subscription(subscription_id, user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Subscription not found")
-

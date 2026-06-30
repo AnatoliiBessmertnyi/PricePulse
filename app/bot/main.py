@@ -1,7 +1,6 @@
 import signal
 import sys
 
-import structlog
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -10,28 +9,13 @@ from telegram.ext import (
 )
 
 from app.bot.config import bot_settings
-from app.bot.handlers.start import start_command
 from app.bot.handlers.add import add_command
 from app.bot.handlers.list import list_command
+from app.bot.handlers.start import start_command
+from app.core.config import settings
+from app.core.logging import get_logger, setup_logging
 
-logger = structlog.get_logger()
-
-
-def setup_logging():
-    """Настройка structlog для бота"""
-    structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.format_exc_info,
-            structlog.dev.ConsoleRenderer(),
-        ],
-        context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
-        cache_logger_on_first_use=True,
-    )
+logger = get_logger(__name__)
 
 
 async def error_handler(
@@ -45,7 +29,7 @@ async def error_handler(
         error_type=type(context.error).__name__,
         update=update,
     )
-    
+
     if isinstance(update, Update) and update.effective_message:
         try:
             await update.effective_message.reply_text(
@@ -60,7 +44,8 @@ async def error_handler(
 
 def main():
     """Точка входа для запуска бота"""
-    setup_logging()
+    # Настройка логирования при старте
+    setup_logging(settings.log_level)
 
     if not bot_settings.telegram_bot_token:
         logger.error("telegram_bot_token_not_set")

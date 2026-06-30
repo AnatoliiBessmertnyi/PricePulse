@@ -12,7 +12,7 @@ class BotSettings(BaseSettings):
 
     telegram_bot_token: str
     fastapi_base_url: str = "http://localhost:8000"
-    
+
     # Таймауты для HTTP клиента (в секундах)
     request_timeout: int = 30
     connect_timeout: int = 10

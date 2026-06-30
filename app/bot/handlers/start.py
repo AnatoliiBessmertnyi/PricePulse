@@ -1,10 +1,10 @@
-import structlog
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.bot.client import HTTPClient
+from app.core.logging import get_logger
 
-logger = structlog.get_logger()
+logger = get_logger(__name__)
 
 
 async def start_command(
@@ -13,7 +13,7 @@ async def start_command(
 ) -> None:
     """
     Обработчик команды /start
-    
+
     Регистрирует пользователя в системе или возвращает информацию о существующем.
     """
     if not update.effective_user:

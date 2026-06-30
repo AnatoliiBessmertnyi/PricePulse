@@ -2,9 +2,13 @@ from celery import Celery
 from celery.signals import worker_shutdown
 
 from app.core.config import settings
+from app.core.logging import setup_logging
 from app.workers.beat_schedule import beat_schedule
 from app.workers.http_client_manager import close_browser
 from app.workers.settings import DEFAULT_QUEUE
+
+# Настройка логирования при старте
+setup_logging(settings.log_level)
 
 celery_app = Celery("pricepulse", broker=settings.rabbitmq_url)
 
@@ -21,6 +25,11 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     beat_schedule=beat_schedule,
+    # Настройка логирования Celery
+    worker_hijack_root_logger=False,
+    worker_redirect_stdouts=False,
+    worker_log_format="[%(asctime)s: %(levelname)s/%(processName)s] %(message)s",
+    worker_task_log_format="[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s",
 )
 
 celery_app.autodiscover_tasks(["app.workers.tasks"])

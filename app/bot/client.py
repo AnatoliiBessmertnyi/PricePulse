@@ -1,10 +1,10 @@
 import httpx
-import structlog
 from pydantic import BaseModel
 
 from app.bot.config import bot_settings
+from app.core.logging import get_logger
 
-logger = structlog.get_logger()
+logger = get_logger(__name__)
 
 
 class UserCreateRequest(BaseModel):

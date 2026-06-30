@@ -1,14 +1,13 @@
 from datetime import datetime
 
-from structlog import get_logger
-
+from app.core.logging import get_logger
 from app.parsers.exceptions import ParserError
 from app.parsers.factory import ParserFactory
 from app.repositories.parse_error import ParseErrorRepository
 from app.repositories.subscription import SubscriptionRepository
 from app.services.price import PriceService
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 class PriceParsingService:
@@ -64,7 +63,7 @@ class PriceParsingService:
             await self._parse_error_repository.create(
                 subscription_id=subscription_id,
                 error_type=type(e).__name__,
-                error_message=str(e),
+                error_message=str(e)[:200],
             )
             await self._subscription_repository.session.commit()
             return
@@ -78,7 +77,7 @@ class PriceParsingService:
         subscription.last_success_at = now
         if product_data.product_name:
             subscription.product_name = product_data.product_name
-        
+
         await self._subscription_repository.session.commit()
 
         logger.info(

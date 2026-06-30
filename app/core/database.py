@@ -8,19 +8,34 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import settings
 
-engine = create_async_engine(
-    settings.postgres_url,
-    echo=False,
-    pool_pre_ping=True,
-)
+# Engine создаётся лениво при первом использовании
+_engine = None
+_async_session_factory = None
 
-async_session_factory = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        _engine = create_async_engine(
+            settings.postgres_url,
+            echo=settings.log_level == "DEBUG",
+            pool_pre_ping=True,
+        )
+    return _engine
+
+
+def get_session_factory():
+    global _async_session_factory
+    if _async_session_factory is None:
+        _async_session_factory = async_sessionmaker(
+            bind=get_engine(),
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+    return _async_session_factory
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
-    async with async_session_factory() as session:
+    # Вызываем factory как функцию, чтобы получить сессию
+    async with get_session_factory()() as session:
         yield session
