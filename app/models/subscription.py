@@ -1,15 +1,16 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Numeric, String
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
+from app.models.user import User
 
 if TYPE_CHECKING:
     from app.models.parse_error import ParseError
     from app.models.price_history import PriceHistory
-    from app.models.user import User
 
 
 class Subscription(Base, TimestampMixin):
@@ -31,12 +32,12 @@ class Subscription(Base, TimestampMixin):
     )
 
     product_url: Mapped[str] = mapped_column(
-        String(2048),
+        String(2000),
         nullable=False,
     )
 
     product_name: Mapped[str | None] = mapped_column(
-        String(512),
+        String(500),
         nullable=True,
     )
 
@@ -56,16 +57,21 @@ class Subscription(Base, TimestampMixin):
         nullable=False,
     )
 
-    user: Mapped["User"] = relationship(
+    last_price_check_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    user: Mapped[User] = relationship(
         back_populates="subscriptions",
     )
 
-    price_history: Mapped[list["PriceHistory"]] = relationship(
+    parse_errors: Mapped[list["ParseError"]] = relationship(
         back_populates="subscription",
         cascade="all, delete-orphan",
     )
 
-    parse_errors: Mapped[list["ParseError"]] = relationship(
+    price_history: Mapped[list["PriceHistory"]] = relationship(
         back_populates="subscription",
         cascade="all, delete-orphan",
     )

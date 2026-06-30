@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from structlog import get_logger
 
 from app.parsers.exceptions import ParserError
@@ -70,13 +72,23 @@ class PriceParsingService:
             )
             return
 
+        # Сохраняем цену в историю
         await self._price_service.save_price(
             subscription_id=subscription.id,
             price=price,
         )
 
+        # Обновляем текущую цену, название и время последней проверки
+        subscription.current_price = price
+        subscription.last_price_check_at = datetime.utcnow()
+        if product_data.product_name:
+            subscription.product_name = product_data.product_name
+        
+        await self._subscription_repository.session.flush()
+
         logger.info(
             "price_saved",
             subscription_id=subscription.id,
             price=str(price),
+            product_name=product_data.product_name,
         )

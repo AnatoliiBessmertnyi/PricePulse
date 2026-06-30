@@ -20,6 +20,7 @@ class SubscriptionResponse(BaseModel):
     current_price: Decimal | None
     target_price: Decimal | None
     is_active: bool
+    last_price_check_at: datetime | None
     created_at: datetime
 
     model_config = {

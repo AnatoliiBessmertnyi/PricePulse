@@ -140,3 +140,18 @@ async def get_latest_price(
         "price": float(price),
         "source": "database",
     }
+
+@router.delete(
+    "/{subscription_id}",
+    status_code=204,
+)
+async def delete_subscription(
+    subscription_id: int,
+    user_id: int,
+    service: SubscriptionService = Depends(get_subscription_service),
+) -> None:
+    """Удалить подписку"""
+    deleted = await service.delete_subscription(subscription_id, user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+

@@ -129,3 +129,18 @@ class HTTPClient:
         )
         response.raise_for_status()
         return response.json()
+
+    async def delete_subscription(
+        self,
+        subscription_id: int,
+        user_id: int,
+    ) -> bool:
+        """Удалить подписку"""
+        response = await self._request(
+            "DELETE",
+            f"/api/v1/subscriptions/{subscription_id}?user_id={user_id}",
+        )
+        if response.status_code == 404:
+            return False
+        response.raise_for_status()
+        return True
