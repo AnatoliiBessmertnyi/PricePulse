@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import computed_field
+from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,9 +29,17 @@ class Settings(BaseSettings):
     rabbitmq_default_user: str
     rabbitmq_default_pass: str
 
-    # Telegram Bot настройки
     telegram_bot_token: str | None = None
     fastapi_base_url: str = "http://api:8000"
+
+    price_check_interval: int = 900
+
+    @field_validator("price_check_interval")
+    @classmethod
+    def validate_price_check_interval(cls, v: int) -> int:
+        if v < 60:
+            raise ValueError("price_check_interval must be at least 60 seconds")
+        return v
 
     @computed_field
     @property

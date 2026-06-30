@@ -129,14 +129,16 @@ class CLIApp:
             print(f"\n📋 Ваши подписки ({len(subscriptions)}):\n")
 
             for idx, sub in enumerate(subscriptions, 1):
+                subscription_id = sub.get("id")  # Реальный ID из БД
                 product_name = sub.get("product_name") or "Без названия"
                 product_url = sub.get("product_url")
                 current_price = sub.get("current_price")
                 marketplace = sub.get("marketplace", "").upper()
                 is_active = sub.get("is_active", True)
-                last_check = sub.get("last_price_check_at")
+                last_check = sub.get("last_check_at")
+                last_success = sub.get("last_success_at")
 
-                print(f"{idx}. {product_name}")
+                print(f"{idx}. [ID: {subscription_id}] {product_name}")
                 if marketplace:
                     print(f"   🏪 {marketplace}")
                 if current_price is not None:
@@ -145,19 +147,38 @@ class CLIApp:
                 else:
                     print(f"   💰 Цена не определена")
                 
-                if last_check:
-                    # Форматируем время
+                # Показываем информацию о времени
+                if last_success:
                     from datetime import datetime
                     try:
-                        if isinstance(last_check, str):
-                            check_time = datetime.fromisoformat(last_check.replace('Z', '+00:00'))
+                        if isinstance(last_success, str):
+                            success_time = datetime.fromisoformat(last_success.replace('Z', '+00:00'))
                         else:
-                            check_time = last_check
-                        print(f"   🕐 Последняя проверка: {check_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                            success_time = last_success
+                        print(f"   🕐 Последняя проверка: {success_time.strftime('%Y-%m-%d %H:%M:%S')}")
                     except:
-                        print(f"   🕐 Последняя проверка: {last_check}")
+                        print(f"   🕐 Последняя проверка: {last_success}")
+                    
+                    if last_check and last_check != last_success:
+                        try:
+                            if isinstance(last_check, str):
+                                check_time = datetime.fromisoformat(last_check.replace('Z', '+00:00'))
+                            else:
+                                check_time = last_check
+                            print(f"   ⚠️ Последняя попытка: {check_time.strftime('%Y-%m-%d %H:%M:%S')} (без успеха)")
+                        except:
+                            print(f"   ⚠️ Последняя попытка: {last_check} (без успеха)")
                 else:
-                    print(f"   🕐 Цена ещё не проверялась")
+                    print(f"   🕐 Цена ещё не получена")
+                    if last_check:
+                        try:
+                            if isinstance(last_check, str):
+                                check_time = datetime.fromisoformat(last_check.replace('Z', '+00:00'))
+                            else:
+                                check_time = last_check
+                            print(f"   ⚠️ Последняя попытка: {check_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                        except:
+                            print(f"   ⚠️ Последняя попытка: {last_check}")
                 
                 print(f"   🔗 {product_url}")
                 if not is_active:

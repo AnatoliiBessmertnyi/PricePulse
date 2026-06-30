@@ -126,6 +126,8 @@ services:
         condition: service_completed_successfully
       api:
         condition: service_started
+    profiles:
+      - bot
 
 volumes:
   postgres_data:

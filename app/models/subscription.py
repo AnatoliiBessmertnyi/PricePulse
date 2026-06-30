@@ -57,7 +57,12 @@ class Subscription(Base, TimestampMixin):
         nullable=False,
     )
 
-    last_price_check_at: Mapped[datetime | None] = mapped_column(
+    last_check_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    last_success_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )

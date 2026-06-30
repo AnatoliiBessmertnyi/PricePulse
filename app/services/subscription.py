@@ -48,10 +48,9 @@ class SubscriptionService:
         if not subscription:
             return False
         
-        # Проверяем, что подписка принадлежит пользователю
         if subscription.user_id != user_id:
             return False
         
-        await self.subscription_repository.delete(subscription_id)
+        await self.subscription_repository.delete(subscription)
         await self.subscription_repository.session.commit()
         return True

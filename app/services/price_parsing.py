@@ -28,14 +28,9 @@ class PriceParsingService:
         self,
         subscription_id: int,
     ) -> None:
-        logger.info(
-            "price_parsing_started",
-            subscription_id=subscription_id,
-        )
+        logger.info("price_parsing_started", subscription_id=subscription_id)
 
-        subscription = await self._subscription_repository.get(
-            subscription_id,
-        )
+        subscription = await self._subscription_repository.get(subscription_id)
 
         if subscription is None:
             logger.warning(
@@ -44,9 +39,9 @@ class PriceParsingService:
             )
             return
 
-        parser = self._parser_factory.get_parser(
-            subscription.marketplace,
-        )
+        parser = self._parser_factory.get_parser(subscription.marketplace)
+        now = datetime.utcnow()
+        subscription.last_check_at = now
 
         try:
             product_data = await parser.parse(subscription.product_url)
@@ -59,6 +54,7 @@ class PriceParsingService:
                 error_type=type(e).__name__,
                 error_message=str(e),
             )
+            await self._subscription_repository.session.commit()
             return
         except Exception as e:
             logger.exception(
@@ -70,21 +66,20 @@ class PriceParsingService:
                 error_type=type(e).__name__,
                 error_message=str(e),
             )
+            await self._subscription_repository.session.commit()
             return
 
-        # Сохраняем цену в историю
         await self._price_service.save_price(
             subscription_id=subscription.id,
             price=price,
         )
 
-        # Обновляем текущую цену, название и время последней проверки
         subscription.current_price = price
-        subscription.last_price_check_at = datetime.utcnow()
+        subscription.last_success_at = now
         if product_data.product_name:
             subscription.product_name = product_data.product_name
         
-        await self._subscription_repository.session.flush()
+        await self._subscription_repository.session.commit()
 
         logger.info(
             "price_saved",
