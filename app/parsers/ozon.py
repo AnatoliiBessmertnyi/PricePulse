@@ -1,12 +1,16 @@
+# app/parsers/ozon.py
 import json
 import re
 from decimal import Decimal, InvalidOperation
 
 from bs4 import BeautifulSoup
 
+from app.core.logging import get_logger
 from app.parsers.base import BaseParser
 from app.parsers.http_client import MarketplaceHttpClient
 from app.parsers.schemas import ProductData, VariantData
+
+logger = get_logger(__name__)
 
 
 class OzonParser(BaseParser):
@@ -20,9 +24,36 @@ class OzonParser(BaseParser):
         self,
         product_url: str,
     ) -> ProductData:
+        logger.info(
+            "ozon_parse_start",
+            url=product_url,
+        )
         html, final_url = await self.http_client.get(
             product_url,
         )
+
+        # ОТЛАДКА: Логируем полученный HTML
+        logger.debug(
+            "ozon_html_received",
+            original_url=product_url,
+            final_url=final_url,
+            html_length=len(html),
+        )
+        
+        # Проверяем наличие JSON-LD схемы
+        soup = BeautifulSoup(html, "html.parser")
+        ld_json_scripts = soup.find_all("script", attrs={"type": "application/ld+json"})
+        
+        if not ld_json_scripts:
+            # Логируем все script теги для отладки
+            all_scripts = soup.find_all("script")
+            logger.warning(
+                "ozon_no_ld_json_found",
+                url=final_url,
+                total_scripts=len(all_scripts),
+                script_types=[s.get("type") for s in all_scripts if s.get("type")],
+                html_preview=html[:1000],  # Первые 1000 символов
+            )
 
         product_name = self._extract_product_name(
             html,
@@ -34,10 +65,22 @@ class OzonParser(BaseParser):
         )
 
         if variant is None:
+            logger.warning(
+                "ozon_variant_not_found",
+                url=final_url,
+                product_name=product_name,
+            )
             raise ValueError(
                 f"Price not found for product: {product_name}. "
                 f"Ozon may have changed the layout or blocked the request.",
             )
+
+        logger.info(
+            "ozon_parse_success",
+            url=final_url,
+            product_name=product_name,
+            price=str(variant.price),
+        )
 
         return ProductData(
             product_name=product_name,
@@ -99,6 +142,10 @@ class OzonParser(BaseParser):
         )
 
         if sku is None:
+            logger.warning(
+                "ozon_sku_not_extracted",
+                url=product_url,
+            )
             return None
 
         soup = BeautifulSoup(
@@ -111,6 +158,13 @@ class OzonParser(BaseParser):
             attrs={
                 "data-state": True,
             },
+        )
+
+        logger.debug(
+            "ozon_data_state_blocks",
+            url=product_url,
+            sku=sku,
+            blocks_found=len(blocks),
         )
 
         for block in blocks:
@@ -131,6 +185,11 @@ class OzonParser(BaseParser):
             if result is not None:
                 return result
 
+        logger.warning(
+            "ozon_no_variant_with_sku",
+            url=product_url,
+            sku=sku,
+        )
         return None
 
     def _extract_sku_from_url(
