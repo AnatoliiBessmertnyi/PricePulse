@@ -49,7 +49,7 @@ services:
     build: .
     env_file:
       - .env
-    command: uv run alembic upgrade head
+    command: alembic upgrade head
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,12 +60,15 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-exclude .git --reload-exclude .ruff_cache --reload-exclude __pycache__ --reload-exclude .venv --no-access-log
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
     ports:
       - "8000:8000"
-    volumes:
-      - .:/app
-      - venv:/app/.venv
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -81,10 +84,19 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    command: uv run celery -A app.workers.celery_app:celery_app worker --pool=prefork --loglevel=info
-    volumes:
-      - .:/app
-      - venv:/app/.venv
+    command: celery -A app.workers.celery_app:celery_app worker --pool=prefork --loglevel=info
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    extra_hosts:
+      - "ozon.ru:185.73.194.82"
+      - "www.ozon.ru:185.73.194.82"
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "celery.*worker"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -100,10 +112,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    command: uv run celery -A app.workers.celery_app:celery_app beat --loglevel=info
-    volumes:
-      - .:/app
-      - venv:/app/.venv
+    command: celery -A app.workers.celery_app:celery_app beat --loglevel=info
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "celery.*beat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -118,9 +133,6 @@ services:
     env_file:
       - .env
     command: uv run python -m app.bot.main
-    volumes:
-      - .:/app
-      - venv:/app/.venv
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -133,4 +145,3 @@ volumes:
   postgres_data:
   redis_data:
   rabbitmq_data:
-  venv:
