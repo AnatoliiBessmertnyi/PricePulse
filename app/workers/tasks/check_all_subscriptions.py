@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
@@ -22,7 +23,6 @@ def check_all_subscriptions() -> None:
 
 async def _check_all_subscriptions() -> None:
     """Получить все активные подписки из БД и поставить задачи на парсинг"""
-    # Создаем engine для этой задачи (не используем глобальный)
     engine = create_async_engine(
         settings.postgres_url,
         echo=False,
@@ -42,7 +42,13 @@ async def _check_all_subscriptions() -> None:
             )
             subscriptions = result.scalars().all()
 
+            now = datetime.now(timezone.utc)
+            for subscription in subscriptions:
+                subscription.last_check_at = now
+
+            await session.commit()
             for subscription in subscriptions:
                 parse_price.delay(subscription.id)
+                
     finally:
         await engine.dispose()

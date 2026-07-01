@@ -1,10 +1,8 @@
 from celery import Celery
-from celery.signals import worker_shutdown
 
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.workers.beat_schedule import beat_schedule
-from app.workers.http_client_manager import close_browser
 from app.workers.settings import DEFAULT_QUEUE
 
 # Настройка логирования при старте
@@ -25,7 +23,9 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     beat_schedule=beat_schedule,
-    # Настройка логирования Celery
+    task_soft_time_limit=120,
+    task_time_limit=150,
+    worker_max_tasks_per_child=50,
     worker_hijack_root_logger=False,
     worker_redirect_stdouts=False,
     worker_log_format="[%(asctime)s: %(levelname)s/%(processName)s] %(message)s",
@@ -33,11 +33,3 @@ celery_app.conf.update(
 )
 
 celery_app.autodiscover_tasks(["app.workers.tasks"])
-
-
-@worker_shutdown.connect
-def on_worker_shutdown(**kwargs):
-    """Закрываем браузер при остановке воркера."""
-    import asyncio
-
-    asyncio.run(close_browser())

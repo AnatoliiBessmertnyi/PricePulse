@@ -6,6 +6,6 @@ from app.workers.tasks.parse_price import (
 )
 
 __all__ = [
-    "parse_price",
     "check_all_subscriptions",
+    "parse_price",
 ]

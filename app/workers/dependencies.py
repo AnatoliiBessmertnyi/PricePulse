@@ -26,13 +26,14 @@ async def get_price_parsing_service(
         price_history_repository=price_history_repository,
         redis_client_sync=redis_client_sync,
     )
-
-    return PriceParsingService(
+    service = PriceParsingService(
         subscription_repository=subscription_repository,
         parser_factory=parser_factory,
         price_service=price_service,
         parse_error_repository=parse_error_repository,
     )
+    service._page = page
+    return service
 
 
 def get_subscription_service(session: SQLAlchemyAsyncSession) -> SubscriptionService:
