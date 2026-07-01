@@ -320,7 +320,7 @@ async def main_loop():
             if command in ("exit", "quit", "q"):
                 print("\n👋 До свидания!\n")
                 break
-            elif command == "help":
+            if command == "help":
                 app.show_help()
             elif command == "start":
                 await app.start()
