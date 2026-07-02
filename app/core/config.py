@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     fastapi_base_url: str = "http://api:8000"
 
     price_check_interval: int = 900
+    browser_pool_size: int = 2
+    worker_concurrency: int = 4
 
     log_level: str = "INFO"
 
@@ -39,6 +41,24 @@ class Settings(BaseSettings):
     def validate_price_check_interval(cls, v: int) -> int:
         if v < 60:
             raise ValueError("price_check_interval must be at least 60 seconds")
+        return v
+
+    @field_validator("browser_pool_size")
+    @classmethod
+    def validate_browser_pool_size(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("browser_pool_size must be at least 1")
+        if v > 20:
+            raise ValueError("browser_pool_size must be at most 20")
+        return v
+
+    @field_validator("worker_concurrency")
+    @classmethod
+    def validate_worker_concurrency(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("worker_concurrency must be at least 1")
+        if v > 16:
+            raise ValueError("worker_concurrency must be at most 16")
         return v
 
     @field_validator("log_level")
@@ -89,7 +109,6 @@ class Settings(BaseSettings):
     @property
     def redis_url(self) -> str:
         return f"redis://{self.redis_host}:{self.redis_port}/0"
-    
 
     cors_origins: str = "http://localhost:3000,http://localhost:8080"
 
@@ -97,7 +116,9 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        return [
+            origin.strip() for origin in self.cors_origins.split(",") if origin.strip()
+        ]
 
 
 @lru_cache

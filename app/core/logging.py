@@ -4,6 +4,21 @@ import sys
 import structlog
 
 
+def _truncate_long_fields(logger, method_name, event_dict):
+    """
+    Обрезать длинные строковые поля в логах.
+    
+    Предотвращает вывод огромных HTML-страниц в логи.
+    """
+    max_length = 500  # Максимальная длина строки
+    
+    for key, value in list(event_dict.items()):
+        if isinstance(value, str) and len(value) > max_length:
+            event_dict[key] = value[:max_length] + f"... [truncated, original length: {len(value)}]"
+    
+    return event_dict
+
+
 def setup_logging(log_level: str = "INFO") -> None:
     """
     Настройка централизованного логирования для всего проекта.
@@ -19,6 +34,7 @@ def setup_logging(log_level: str = "INFO") -> None:
             structlog.processors.StackInfoRenderer(),
             structlog.dev.set_exc_info,
             structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False),
+            _truncate_long_fields,
             structlog.dev.ConsoleRenderer(),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(
@@ -62,6 +78,8 @@ def setup_logging(log_level: str = "INFO") -> None:
     logging.getLogger("aio_pika").setLevel(logging.WARNING)
     logging.getLogger("celery").setLevel(logging.INFO)
     logging.getLogger("kombu").setLevel(logging.WARNING)
+    logging.getLogger("playwright").setLevel(logging.WARNING)
+    logging.getLogger("asyncpg").setLevel(logging.WARNING)
 
     # Включаем SQL логи только в DEBUG
     if log_level == "DEBUG":

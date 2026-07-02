@@ -39,11 +39,11 @@ class OzonParser(BaseParser):
             final_url=final_url,
             html_length=len(html),
         )
-        
+
         # Проверяем наличие JSON-LD схемы
         soup = BeautifulSoup(html, "html.parser")
         ld_json_scripts = soup.find_all("script", attrs={"type": "application/ld+json"})
-        
+
         if not ld_json_scripts:
             # Логируем все script теги для отладки
             all_scripts = soup.find_all("script")
@@ -52,7 +52,7 @@ class OzonParser(BaseParser):
                 url=final_url,
                 total_scripts=len(all_scripts),
                 script_types=[s.get("type") for s in all_scripts if s.get("type")],
-                html_preview=html[:1000],  # Первые 1000 символов
+                html_preview=html[:500],
             )
 
         product_name = self._extract_product_name(
