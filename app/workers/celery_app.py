@@ -19,17 +19,23 @@ celery_app.conf.update(
     task_track_started=True,
     broker_connection_retry_on_startup=True,
     task_default_queue=DEFAULT_QUEUE,
-    worker_prefetch_multiplier=1,
+    # === Concurrency & Resource Limits ===
+    worker_concurrency=settings.worker_concurrency,
+    worker_prefetch_multiplier=1,  # Одна задача за раз на каждого worker
     task_acks_late=True,
     task_reject_on_worker_lost=True,
-    beat_schedule=beat_schedule,
-    task_soft_time_limit=120,
-    task_time_limit=150,
-    worker_max_tasks_per_child=50,
+    # === Time Limits ===
+    task_soft_time_limit=120,  # 2 минуты — мягкий лимит
+    task_time_limit=150,  # 2.5 минуты — жесткий лимит
+    # === Worker Lifecycle ===
+    worker_max_tasks_per_child=1,
     worker_hijack_root_logger=False,
     worker_redirect_stdouts=False,
+    # === Logging ===
     worker_log_format="[%(asctime)s: %(levelname)s/%(processName)s] %(message)s",
     worker_task_log_format="[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s",
+    # === Beat Schedule ===
+    beat_schedule=beat_schedule,
 )
 
 celery_app.autodiscover_tasks(["app.workers.tasks"])

@@ -84,7 +84,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    command: celery -A app.workers.celery_app:celery_app worker --pool=prefork --loglevel=info
+    command: celery -A app.workers.celery_app:celery_app worker --pool=prefork --concurrency=2 --loglevel=info
     dns:
       - 8.8.8.8
       - 1.1.1.1

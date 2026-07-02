@@ -15,10 +15,14 @@ from app.workers.http_client_manager import get_page
 async def get_price_parsing_service(
     session: SQLAlchemyAsyncSession,
 ) -> PriceParsingService:
+    """Создать сервис парсинга с браузером текущего процесса."""
     subscription_repository = SubscriptionRepository(session)
     price_history_repository = PriceHistoryRepository(session)
     parse_error_repository = ParseErrorRepository(session)
+
+    # Получаем страницу из браузера текущего процесса
     page = await get_page()
+
     marketplace_http_client = MarketplaceHttpClient(page=page)
     parser_factory = ParserFactory(http_client=marketplace_http_client)
     redis_client_sync = get_redis_sync()
