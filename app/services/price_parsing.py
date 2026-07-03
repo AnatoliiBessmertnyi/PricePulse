@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+from app.core.constants import ERROR_MESSAGE_MAX_LENGTH
 from app.core.logging import get_logger
 from app.parsers.exceptions import ParserError
 from app.parsers.factory import ParserFactory
@@ -22,7 +23,6 @@ class PriceParsingService:
         self._parser_factory = parser_factory
         self._price_service = price_service
         self._parse_error_repository = parse_error_repository
-        self._page = None
 
     async def parse_subscription(self, subscription_id: int) -> None:
         logger.info("price_parsing_started", subscription_id=subscription_id)
@@ -65,7 +65,7 @@ class PriceParsingService:
             await self._parse_error_repository.create(
                 subscription_id=subscription_id,
                 error_type=type(e).__name__,
-                error_message=str(e)[:200],
+                error_message=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
             )
             await self._subscription_repository.session.commit()
             raise

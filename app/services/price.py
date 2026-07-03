@@ -3,6 +3,7 @@ from decimal import Decimal
 from redis import Redis as SyncRedis
 from redis.asyncio import Redis
 
+from app.core.constants import REDIS_PRICE_TTL
 from app.repositories.price_history import PriceHistoryRepository
 
 
@@ -50,7 +51,6 @@ class PriceService:
         redis_client_sync: SyncRedis | None = None,
     ) -> None:
         self._price_history_repository = price_history_repository
-
         if price_cache is not None:
             self._price_cache = price_cache
         else:
@@ -63,7 +63,7 @@ class PriceService:
             subscription_id=subscription_id, price=price
         )
         cache_key = f"price:latest:{subscription_id}"
-        await self._price_cache.set(cache_key, str(price), 3600)
+        await self._price_cache.set(cache_key, str(price), REDIS_PRICE_TTL)
 
     async def get_price_history(self, subscription_id: int):
         return await self._price_history_repository.get_by_subscription_id(
@@ -82,4 +82,5 @@ class PriceService:
         )
         if history:
             return history[0].price
+
         return None
