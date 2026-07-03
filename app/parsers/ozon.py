@@ -14,6 +14,21 @@ from app.parsers.schemas import ProductData, VariantData
 logger = get_logger(__name__)
 
 
+class _SoupProxy:
+    """Прокси для BeautifulSoup с коротким __repr__ для логов."""
+    
+    __slots__ = ("_soup",)
+    
+    def __init__(self, soup: BeautifulSoup) -> None:
+        self._soup = soup
+    
+    def __getattr__(self, name: str):
+        return getattr(self._soup, name)
+    
+    def __repr__(self) -> str:
+        return f"<BeautifulSoup: {len(str(self._soup))} chars>"
+
+
 class OzonParser(BaseParser):
     def __init__(self, http_client: MarketplaceHttpClient) -> None:
         self.http_client = http_client
@@ -21,20 +36,16 @@ class OzonParser(BaseParser):
     async def parse(self, product_url: str) -> ProductData:
         logger.info("ozon_parse_start", url=product_url)
         html, final_url = await self.http_client.get(product_url)
-
         logger.debug(
             "ozon_html_received",
             original_url=product_url,
             final_url=final_url,
             html_length=len(html),
         )
-
-        ld_json_scripts = BeautifulSoup(html, "html.parser").find_all(
-            "script", attrs={"type": "application/ld+json"}
-        )
-
+        soup = _SoupProxy(BeautifulSoup(html, "html.parser"))
+        ld_json_scripts = soup.find_all("script", attrs={"type": "application/ld+json"})
         if not ld_json_scripts:
-            all_scripts = BeautifulSoup(html, "html.parser").find_all("script")
+            all_scripts = soup.find_all("script")
             logger.warning(
                 "ozon_no_ld_json_found",
                 url=final_url,
@@ -43,14 +54,11 @@ class OzonParser(BaseParser):
                 html_preview=html[:200],
             )
 
-        product_name = self._extract_product_name(html)
-        variant = self._extract_selected_variant(html, final_url)
-
+        product_name = self._extract_product_name(soup)
+        variant = self._extract_selected_variant(soup, final_url)
         if variant is None:
             logger.warning(
-                "ozon_variant_not_found",
-                url=final_url,
-                product_name=product_name,
+                "ozon_variant_not_found", url=final_url, product_name=product_name
             )
             raise ValueError(
                 f"Price not found for product: {product_name}. "
@@ -63,17 +71,14 @@ class OzonParser(BaseParser):
             product_name=product_name,
             price=str(variant.price),
         )
-
         return ProductData(
             product_name=product_name,
             current_price=variant.price,
             selected_options=variant.selected_options,
         )
 
-    def _extract_product_name(self, html: str) -> str:
-        script = BeautifulSoup(html, "html.parser").find(
-            "script", attrs={"type": "application/ld+json"}
-        )
+    def _extract_product_name(self, soup: BeautifulSoup) -> str:
+        script = soup.find("script", attrs={"type": "application/ld+json"})
         if script is None:
             raise ValueError("Ozon product schema not found")
 
@@ -82,30 +87,25 @@ class OzonParser(BaseParser):
 
         product_data = json.loads(script.string)
         product_name = product_data.get("name")
-
         if not isinstance(product_name, str):
             raise ValueError("Product name not found")
 
         return product_name
 
     def _extract_selected_variant(
-        self, html: str, product_url: str
+        self, soup: BeautifulSoup, product_url: str
     ) -> VariantData | None:
         sku = self._extract_sku_from_url(product_url)
         if sku is None:
             logger.warning("ozon_sku_not_extracted", url=product_url)
             return None
 
-        blocks = BeautifulSoup(html, "html.parser").find_all(
-            "div", attrs={"data-state": True}
-        )
+        blocks = soup.find_all("div", attrs={"data-state": True})
         logger.debug(
             "ozon_data_state_blocks", url=product_url, sku=sku, blocks_found=len(blocks)
         )
-
         for block in blocks:
             state = block.get("data-state")
-
             if not state:
                 continue
 
@@ -114,7 +114,6 @@ class OzonParser(BaseParser):
                 continue
 
             result = self._extract_variant_from_state(state, sku)
-
             if result is not None:
                 return result
 
