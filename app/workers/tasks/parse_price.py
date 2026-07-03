@@ -27,8 +27,23 @@ def parse_price(subscription_id: int) -> None:
     except SoftTimeLimitExceeded:
         logger.warning("parse_price_timeout", subscription_id=subscription_id)
         asyncio.run(_mark_as_failed(subscription_id))
-    except (ParserError, ValueError, Exception):
+    except (ParserError, ValueError) as e:
+        logger.error(
+            "parse_price_parse_error",
+            subscription_id=subscription_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         asyncio.run(_mark_as_failed(subscription_id))
+    except Exception as e:
+        logger.error(
+            "parse_price_error",
+            subscription_id=subscription_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        asyncio.run(_mark_as_failed(subscription_id))
+        raise
 
 
 async def _mark_as_failed(subscription_id: int) -> None:
