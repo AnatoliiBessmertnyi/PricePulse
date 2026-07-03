@@ -24,19 +24,12 @@ class PriceParsingService:
         self._parse_error_repository = parse_error_repository
         self._page = None
 
-    async def parse_subscription(
-        self,
-        subscription_id: int,
-    ) -> None:
+    async def parse_subscription(self, subscription_id: int) -> None:
         logger.info("price_parsing_started", subscription_id=subscription_id)
-
         subscription = await self._subscription_repository.get(subscription_id)
 
         if subscription is None:
-            logger.warning(
-                "subscription_not_found",
-                subscription_id=subscription_id,
-            )
+            logger.warning("subscription_not_found", subscription_id=subscription_id)
             return
 
         parser = self._parser_factory.get_parser(subscription.marketplace)
@@ -46,7 +39,12 @@ class PriceParsingService:
             product_data = await parser.parse(subscription.product_url)
             price = product_data.current_price
         except ParserError as e:
-            logger.exception("price_parsing_failed", subscription_id=subscription_id)
+            logger.error(
+                "price_parsing_failed",
+                subscription_id=subscription_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
             await self._parse_error_repository.create(
                 subscription_id=subscription_id,
@@ -54,13 +52,14 @@ class PriceParsingService:
                 error_message=str(e),
             )
             await self._subscription_repository.session.commit()
-
-            # Поднимаем исключение дальше, чтобы parse_price пометил как FAILED
             raise
 
         except Exception as e:
-            logger.exception(
-                "unexpected_parsing_error", subscription_id=subscription_id
+            logger.error(
+                "unexpected_parsing_error",
+                subscription_id=subscription_id,
+                error=str(e),
+                error_type=type(e).__name__,
             )
 
             await self._parse_error_repository.create(
@@ -69,16 +68,11 @@ class PriceParsingService:
                 error_message=str(e)[:200],
             )
             await self._subscription_repository.session.commit()
-
-            # Поднимаем исключение дальше, чтобы parse_price пометил как FAILED
             raise
 
-        # Успех — сохраняем цену
         await self._price_service.save_price(
-            subscription_id=subscription.id,
-            price=price,
+            subscription_id=subscription.id, price=price
         )
-
         subscription.current_price = price
         subscription.last_success_at = now
         if product_data.product_name:

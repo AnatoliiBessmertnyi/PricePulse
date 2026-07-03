@@ -4,18 +4,20 @@ import sys
 import structlog
 
 
-def _truncate_long_fields(logger, method_name, event_dict):
+def _truncate_long_fields(_logger, _method_name, event_dict):
     """
     Обрезать длинные строковые поля в логах.
-    
+
     Предотвращает вывод огромных HTML-страниц в логи.
     """
-    max_length = 500  # Максимальная длина строки
-    
+    max_length = 500
+
     for key, value in list(event_dict.items()):
         if isinstance(value, str) and len(value) > max_length:
-            event_dict[key] = value[:max_length] + f"... [truncated, original length: {len(value)}]"
-    
+            event_dict[key] = (
+                value[:max_length] + f"... [truncated, original length: {len(value)}]"
+            )
+
     return event_dict
 
 
@@ -26,7 +28,6 @@ def setup_logging(log_level: str = "INFO") -> None:
     Args:
         log_level: Уровень логирования (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     """
-    # Настройка structlog
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
@@ -45,30 +46,21 @@ def setup_logging(log_level: str = "INFO") -> None:
         cache_logger_on_first_use=False,
     )
 
-    # Настройка стандартного logging
     logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=getattr(logging, log_level),
+        format="%(message)s", stream=sys.stdout, level=getattr(logging, log_level)
     )
-
-    # Очищаем handlers у SQLAlchemy чтобы избежать дублирования
     sqlalchemy_logger = logging.getLogger("sqlalchemy.engine")
     sqlalchemy_logger.handlers.clear()
     sqlalchemy_logger.propagate = False
 
-    # Также очищаем parent loggers
     for logger_name in ["sqlalchemy", "sqlalchemy.engine.Engine"]:
         logger = logging.getLogger(logger_name)
         logger.handlers.clear()
         logger.propagate = False
 
-    # Перехватываем uvicorn логи через structlog
     logging.getLogger("uvicorn").handlers.clear()
     logging.getLogger("uvicorn.access").handlers.clear()
     logging.getLogger("uvicorn.error").handlers.clear()
-
-    # Отключаем слишком подробные логи библиотек
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.error").setLevel(logging.INFO)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
@@ -81,7 +73,6 @@ def setup_logging(log_level: str = "INFO") -> None:
     logging.getLogger("playwright").setLevel(logging.WARNING)
     logging.getLogger("asyncpg").setLevel(logging.WARNING)
 
-    # Включаем SQL логи только в DEBUG
     if log_level == "DEBUG":
         logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
 
