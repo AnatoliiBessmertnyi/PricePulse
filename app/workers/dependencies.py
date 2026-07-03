@@ -33,7 +33,6 @@ async def get_price_parsing_service(
         price_service=price_service,
         parse_error_repository=parse_error_repository,
     )
-    service._page = page
     return service
 
 
