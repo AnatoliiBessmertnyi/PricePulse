@@ -9,7 +9,7 @@ from app.repositories.subscription import (
     SubscriptionRepository,
 )
 from app.repositories.user import UserRepository
-from app.services.price import PriceService
+from app.services.price import PriceCache, PriceService
 from app.services.subscription import (
     SubscriptionService,
 )
@@ -52,4 +52,8 @@ def get_price_service(
     repository: PriceHistoryRepository = Depends(get_price_history_repository),
     redis_client: Redis = Depends(get_redis_client),
 ) -> PriceService:
-    return PriceService(repository, redis_client)
+    price_cache = PriceCache(redis_async=redis_client)
+    return PriceService(
+        price_history_repository=repository,
+        price_cache=price_cache,
+    )
