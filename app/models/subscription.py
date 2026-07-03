@@ -19,9 +19,6 @@ class SubscriptionStatus(StrEnum):
     """Статусы подписки."""
 
     IDLE = "idle"  # Ожидает проверки
-    SCHEDULED = "scheduled"  # Задача создана
-    RUNNING = "running"  # Задача выполняется
-    COMPLETED = "completed"  # Задача завершена успешно
     FAILED = "failed"  # Задача завершилась с ошибкой
 
 
@@ -48,7 +45,6 @@ class Subscription(Base, TimestampMixin):
     last_success_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    last_task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     user: Mapped[User] = relationship(back_populates="subscriptions")
     parse_errors: Mapped[list["ParseError"]] = relationship(
         back_populates="subscription", cascade="all, delete-orphan"
