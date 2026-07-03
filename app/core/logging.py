@@ -29,7 +29,9 @@ def setup_logging(log_level: str = "INFO") -> None:
     Args:
         log_level: Уровень логирования (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     """
-    install_rich_traceback(show_locals=True, locals_max_length=20, locals_max_string=200)
+    install_rich_traceback(
+        show_locals=True, locals_max_length=20, locals_max_string=200
+    )
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

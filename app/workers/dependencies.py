@@ -27,13 +27,12 @@ async def get_price_parsing_service(
     price_service = PriceService(
         price_history_repository=price_history_repository, price_cache=price_cache
     )
-    service = PriceParsingService(
+    return PriceParsingService(
         subscription_repository=subscription_repository,
         parser_factory=parser_factory,
         price_service=price_service,
         parse_error_repository=parse_error_repository,
     )
-    return service
 
 
 def get_subscription_service(session: SQLAlchemyAsyncSession) -> SubscriptionService:

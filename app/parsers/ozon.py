@@ -16,15 +16,15 @@ logger = get_logger(__name__)
 
 class _SoupProxy:
     """Прокси для BeautifulSoup с коротким __repr__ для логов."""
-    
+
     __slots__ = ("_soup",)
-    
+
     def __init__(self, soup: BeautifulSoup) -> None:
         self._soup = soup
-    
+
     def __getattr__(self, name: str):
         return getattr(self._soup, name)
-    
+
     def __repr__(self) -> str:
         return f"<BeautifulSoup: {len(str(self._soup))} chars>"
 
