@@ -82,15 +82,19 @@ PricePulse — сервис мониторинга цен на маркетпл�
 * Docker
 * Docker Compose
 
-## Тестирование
+## Тестирование и качество кода
 
 * pytest
 * pytest-asyncio
 * respx
+* Ruff (linter + formatter)
+* mypy
+* pre-commit
 
 ## Логирование
 
 * structlog
+* Rich traceback
 
 ---
 
@@ -100,6 +104,7 @@ PricePulse — сервис мониторинга цен на маркетпл�
 app/
 ├── api/              # FastAPI endpoints
 ├── bot/              # Telegram Bot
+├── cli/              # CLI приложение (интерактивный режим)
 ├── core/             # Config, database, redis
 ├── models/           # SQLAlchemy models
 ├── parsers/          # Marketplace parsers
@@ -107,6 +112,36 @@ app/
 ├── services/         # Business logic
 └── workers/          # Celery tasks & beat
 ```
+
+---
+
+# Архитектурные решения
+
+## Worker Infrastructure
+
+### ProcessBrowser (singleton per process)
+Каждый Celery worker-процесс имеет свой экземпляр браузера Playwright.
+Реализован через singleton-паттерн, переиспользуется между задачами.
+Закрытие происходит через `worker_max_tasks_per_child=1`.
+
+### Database Factories
+Фабрики `create_worker_engine()` и `create_worker_session_factory()`
+вынесены в `app/workers/database.py` для устранения дублирования.
+
+### PriceCache
+Инкапсулирует sync/async Redis логику. Автоматически выбирает нужный клиент.
+Используется в `PriceService` для работы с кэшем последних цен.
+
+### Redis Connection Singleton
+Соединения Redis (`get_redis()`, `get_redis_sync()`) создаются один раз
+и переиспользуются через глобальные переменные.
+
+## Логирование
+
+* **structlog** — структурированные логи с контекстом
+* **Rich traceback** — красивые traceback с locals (ограничены `locals_max_string=100`)
+* **Truncation** — длинные строки обрезаются до 200 символов в логах
+* **Single traceback** — ошибка логируется один раз на верхнем уровне задачи
 
 ---
 
@@ -147,6 +182,24 @@ docker compose up -d
 API доступен по адресу: http://localhost:8000
 
 Swagger UI: http://localhost:8000/docs
+
+---
+
+## CLI приложение
+
+Интерактивный CLI для работы с системой без Telegram:
+
+```bash
+uv run python -m app.cli.main
+```
+
+Доступные команды:
+* `start` — зарегистрироваться в системе
+* `add <ссылка>` — добавить подписку на товар
+* `list` — показать ваши подписки
+* `price <id>` — получить текущую цену
+* `delete <id>` — удалить подписку
+* `help` — показать справку
 
 ---
 
@@ -211,8 +264,9 @@ architecture.md
 * ✅ Парсер Ozon (Playwright)
 * ✅ Периодический мониторинг цен (каждые 15 минут)
 * ✅ Кэширование в Redis
+* ✅ Структурированное логирование (structlog + Rich traceback)
 * ⏳ Telegram Bot
-* ⏳ Логирование и мониторинг
+* ⏳ Уведомления о снижении цены
 
 ## Sprint 2
 
@@ -236,4 +290,5 @@ architecture.md
 
 Проект находится на этапе построения Telegram Bot и системы уведомлений.
 
-Базовая инфраструктура и парсинг цен работают.
+Базовая инфраструктура, парсинг цен и логирование работают.
+```

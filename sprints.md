@@ -85,6 +85,8 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 * [x] Alembic
 * [x] Миграции (создание таблиц, добавление полей времени)
 * [x] Корректные SQLAlchemy relationships с `back_populates`
+* [x] Фабрики `create_worker_engine()` и `create_worker_session_factory()` в `app/workers/database.py`
+* [x] `StrEnum` вместо `(str, Enum)` для `SubscriptionStatus`
 
 ---
 
@@ -137,6 +139,7 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 - [x] Dependency Injection
 - [x] Redis кэш для latest-price
 - [x] RequestLoggingMiddleware для структурированного логирования HTTP запросов
+- [x] PriceCache для инкапсуляции sync/async Redis логики
 
 ---
 
@@ -177,7 +180,9 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 * [x] Task acknowledgment (acks_late)
 * [x] Prefetch multiplier (1)
 * [x] Error tracking в БД
-* [x] Singleton HTTP client
+* [x] ProcessBrowser singleton (один браузер на worker-процесс)
+* [x] Worker database factories (переиспользование engine/session)
+* [x] `worker_max_tasks_per_child=1` для очистки ресурсов
 
 ---
 
@@ -207,6 +212,8 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 * [x] Кеширование последней цены (TTL 1 час)
 * [x] Ключ кэша: `price:latest:{subscription_id}`
 * [x] Endpoint `/latest-price` с проверкой кэша перед БД
+* [x] Redis connection singleton (переиспользование соединений)
+* [x] PriceCache класс для инкапсуляции sync/async логики
 
 ---
 
@@ -230,7 +237,7 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 - Автоматический мониторинг цен по всем активным подпискам
 - История цен обновляется регулярно (настраивается через `PRICE_CHECK_INTERVAL`)
 - Playwright успешно обходит JavaScript challenges
-- Парсинг занимает 6-9 секунд на подписку
+- Парсинг занимает ~40 секунд на подписку (headless Chromium + тяжёлая страница Ozon)
 - Цены кэшируются в Redis с TTL 1 час
 - API возвращает данные из кэша мгновенно
 
@@ -315,6 +322,12 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 * [x] Проверка PostgreSQL
 * [x] Проверка Redis
 * [x] Проверка RabbitMQ
+* [x] Rich traceback с ограничением locals (`locals_max_string=100`)
+* [x] Truncation длинных строк в логах (200 символов)
+* [x] Single traceback (ошибка логируется один раз на верхнем уровне задачи)
+* [x] Устранение дублирования traceback между service и task слоями
+* [x] Ruff конфигурация с ignore для русского проекта (RUF001-003, B008, S311)
+* [x] per-file-ignores для CLI/scripts/bot/alembic
 
 ### Результат
 
@@ -324,6 +337,8 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 - INFO режим показывает только важные события
 - Логи пишутся в stdout (стандарт для контейнеризированных приложений)
 - Docker автоматически собирает логи всех контейнеров
+- Компактные traceback без дублирования и огромных HTML-выводов
+- Чистый код без предупреждений ruff linter
 
 ---
 
@@ -370,4 +385,4 @@ Telegram Bot → FastAPI → Celery → RabbitMQ → Worker → PostgreSQL
 * [ ] Kubernetes
 * [ ] Настройка VPN/прокси для Telegram бота на рабочем ПК
 * [ ] Улучшение парсера Ozon (обработка блокировок и изменения layout)
-* [ ] Уменьшение размера traceback в логах (ограничение HTML вывода)
+* [ ] Оптимизация скорости парсинга (блокировка ресурсов через page.route)

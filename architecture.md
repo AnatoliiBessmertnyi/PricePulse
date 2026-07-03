@@ -113,11 +113,35 @@ price:latest:{subscription_id} → "3009"
 
 Ключ содержит ID подписки, значение — последнюю цену в виде строки.
 
-#### Клиенты
-- FastAPI использует redis.asyncio.Redis (асинхронный клиент)
-- Celery Worker использует redis.Redis (синхронный клиент)
+### Клиенты и PriceCache
+
+FastAPI использует `redis.asyncio.Redis` (асинхронный клиент), Celery Worker использует `redis.Redis` (синхронный клиент).
 
 Оба клиента работают с одним Redis-сервером. Разделение обусловлено тем, что Celery задачи выполняются в синхронном контексте и не должны зависеть от event loop FastAPI.
+
+**Singleton соединения:** Функции `get_redis()` и `get_redis_sync()` создают соединение один раз и переиспользуют его через глобальные переменные `_async_redis` и `_sync_redis`. Это устраняет накладные расходы на создание нового соединения при каждом вызове.
+
+**PriceCache:** Класс `PriceCache` инкапсулирует sync/async Redis логику. Автоматически выбирает нужный клиент в зависимости от контекста. Используется в `PriceService` для работы с кэшем последних цен.
+
+```python
+class PriceCache:
+    def __init__(self, redis_sync=None, redis_async=None):
+        self._redis_sync = redis_sync
+        self._redis_async = redis_async
+    
+    async def set(self, key, value, ttl):
+        if self._redis_sync:
+            self._redis_sync.setex(key, ttl, value)
+        elif self._redis_async:
+            await self._redis_async.setex(key, ttl, value)
+    
+    async def get(self, key):
+        if self._redis_async:
+            return await self._redis_async.get(key)
+        if self._redis_sync:
+            return self._redis_sync.get(key)
+        return None
+```
 
 ---
 
@@ -146,14 +170,33 @@ price:latest:{subscription_id} → "3009"
 1. Получает все активные подписки из PostgreSQL
 2. Для каждой подписки ставит задачу `parse_price` в очередь
 
-### Isolated Async Engine
+### Database Factories
 
-Каждая задача `check_all_subscriptions` создаёт собственный async SQLAlchemy engine вместо использования глобального. Это необходимо для избежания конфликтов event loop, так как Celery использует `asyncio.run()` внутри синхронных задач, а глобальный engine привязан к event loop, созданному при импорте модуля.
+Каждая задача создаёт собственный async SQLAlchemy engine через фабрики `create_worker_engine()` и `create_worker_session_factory()` из `app/workers/database.py`. Это необходимо для избежания конфликтов event loop, так как Celery использует `asyncio.run()` внутри синхронных задач, а глобальный engine привязан к event loop, созданному при импорте модуля.
+
+```python
+# app/workers/database.py
+def create_worker_engine():
+    return create_async_engine(
+        settings.postgres_url,
+        echo=False,
+        pool_pre_ping=True,
+    )
+
+def create_worker_session_factory(engine):
+    return async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+```
+
+Использование:
 
 ```python
 async def _check_all_subscriptions() -> None:
-    engine = create_async_engine(settings.postgres_url, ...)
-    async_session_factory = async_sessionmaker(bind=engine, ...)
+    engine = create_worker_engine()
+    async_session_factory = create_worker_session_factory(engine)
     
     try:
         async with async_session_factory() as session:
@@ -172,7 +215,7 @@ async def _check_all_subscriptions() -> None:
 
 ## Celery Worker
 
-### HTTP Client
+### ProcessBrowser (singleton per process)
 
 Воркер использует **Playwright** (headless Chromium) для парсинга маркетплейсов.
 
@@ -188,7 +231,38 @@ Playwright необходим для обхода продвинутой защ�
 * `httpx` — блокируется Ozon (403 Forbidden)
 * `curl_cffi` с impersonate — блокируется Ozon (403 Forbidden)
 
-Браузер запускается в режиме singleton и переиспользуется между задачами. При остановке воркера браузер корректно закрывается через сигнал `worker_shutdown`.
+**ProcessBrowser singleton:** Каждый Celery worker-процесс имеет свой экземпляр браузера Playwright. Реализован через singleton-паттерн в классе `ProcessBrowser`. Браузер создаётся при первом вызове `get_page()` и переиспользуется между задачами. Закрытие происходит через `worker_max_tasks_per_child=1`.
+
+```python
+class ProcessBrowser:
+    _instance: "ProcessBrowser | None" = None
+    
+    def __new__(cls) -> "ProcessBrowser":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
+    async def get_page(self) -> Page:
+        if self._page is not None:
+            return self._page
+        
+        self._playwright = await async_playwright().start()
+        self._browser = await self._playwright.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-setuid-sandbox"],
+        )
+        self._context = await self._browser.new_context(...)
+        self._page = await self._context.new_page()
+        return self._page
+    
+    async def close(self) -> None:
+        # Закрытие page, context, browser, playwright
+        ...
+
+def get_process_browser() -> ProcessBrowser:
+    return ProcessBrowser()
+```
 
 Конфигурация запуска:
 
@@ -203,8 +277,8 @@ _browser = await _playwright.chromium.launch(
 
 ### Производительность
 
-- Парсинг одной подписки занимает 6-9 секунд
-- При интервале 15 минут один воркер успевает обработать ~100 подписок за цикл
+- Парсинг одной подписки занимает ~40 секунд (headless Chromium + тяжёлая страница Ozon)
+- При интервале 15 минут один воркер успевает обработать ~20 подписок за цикл
 - Для масштабирования до 2000 подписок потребуется пул из 5-10 браузеров (отложено)
 
 ---
@@ -335,7 +409,7 @@ app/services/
 Примеры сервисов:
 
 - **PriceParsingService** — оркестрирует процесс парсинга подписки, обновляет `last_check_at` при любой попытке и `last_success_at` при успехе
-- **PriceService** — сохраняет историю цен
+- **PriceService** — сохраняет историю цен, использует `PriceCache` для работы с Redis
 - **SubscriptionService** — управляет подписками (создание, получение, удаление)
 - **UserService** — управляет пользователями
 
@@ -374,6 +448,8 @@ app/workers/
 Компоненты:
 
 - **celery_app.py** — конфигурация Celery
+- **database.py** — фабрики engine/session для worker
+- **http_client_manager.py** — ProcessBrowser singleton
 - **tasks/** — определения задач (например, **parse_price**)
 - **dependencies.py** — Dependency Injection для задач
 - **settings.py** — константы (имена очередей, задач)
@@ -473,8 +549,9 @@ Celery задачи синхронные, но внутри используют
 Для избежания конфликтов event loop:
 
 * Воркер запускается с `--pool=prefork` (каждый процесс имеет свой event loop)
-* Задача `check_all_subscriptions` создаёт собственный async engine вместо использования глобального
+* Задача `check_all_subscriptions` создаёт собственный async engine через `create_worker_engine()` вместо использования глобального
 * Синхронный Redis-клиент используется в воркере, асинхронный — в FastAPI
+* Оба клиента переиспользуют соединения через singleton-паттерн
 
 ---
 
@@ -559,6 +636,24 @@ Celery задачи автоматически ретраятся при оши�
 ```
 
 Стандартный uvicorn access log отключён через `--no-access-log` для избежания дублирования.
+
+### Rich Traceback
+
+Celery worker использует Rich для форматирования traceback с locals:
+
+```python
+from rich.traceback import install
+install(
+    show_locals=True,
+    locals_max_string=100,  # Строки обрезаются до 100 символов
+    locals_max_length=10,   # Контейнеры до 10 элементов
+    max_frames=15,          # Максимум 15 фреймов
+)
+```
+
+**Truncation:** Длинные строки в логах обрезаются до 200 символов через `_truncate_long_fields` processor в structlog.
+
+**Single Traceback:** Ошибка логируется один раз на верхнем уровне задачи (`_parse_price`), а не в каждом слое. Это устраняет дублирование traceback.
 
 ---
 
@@ -650,6 +745,8 @@ Ozon перешел на React Server Components и больше не отдае
 
 Accepted
 
+---
+
 ## ADR-006
 
 Решение:
@@ -668,7 +765,7 @@ Playwright запускает реальный браузер Chromium, кото
 
 Компромиссы:
 
-* Парсинг занимает 6-9 секунд вместо 1-2 секунд для HTTP-запроса
+* Парсинг занимает ~40 секунд вместо 1-2 секунд для HTTP-запроса
 * Требует установки Chromium и системных зависимостей в Docker
 * Потребляет больше памяти (~200-300 МБ на браузер)
 
@@ -681,6 +778,8 @@ Playwright запускает реальный браузер Chromium, кото
 Статус:
 
 Accepted
+
+---
 
 ## ADR-007
 
@@ -699,6 +798,8 @@ Accepted
 Статус:
 
 Accepted
+
+---
 
 ## ADR-008
 
@@ -719,6 +820,8 @@ Accepted
 
 Accepted
 
+---
+
 ## ADR-009
 
 Решение:
@@ -737,6 +840,8 @@ Accepted
 
 Accepted
 
+---
+
 ## ADR-010
 
 Решение:
@@ -752,6 +857,8 @@ Telegram бот требует VPN/прокси для доступа к API Tel
 Статус:
 
 Accepted
+
+---
 
 ## ADR-011
 
@@ -770,6 +877,95 @@ Accepted
 
 Accepted
 
+---
+
+## ADR-012
+
+Решение:
+
+Использовать ProcessBrowser singleton per process вместо глобальных переменных.
+
+Причина:
+
+Глобальные переменные `_browser`, `_context`, `_page`, `_playwright` создавали неочевидное состояние и усложняли тестирование. Singleton-паттерн через класс `ProcessBrowser` обеспечивает:
+- Явное управление жизненным циклом браузера
+- Каждый worker-процесс имеет свой экземпляр
+- Методы `get_page()` и `close()` для явного управления
+
+Статус:
+
+Accepted
+
+---
+
+## ADR-013
+
+Решение:
+
+Вынести фабрики engine/session в `app/workers/database.py`.
+
+Причина:
+
+Дублирование кода создания `create_async_engine()` и `async_sessionmaker()` в каждой задаче (`parse_price`, `check_all_subscriptions`). Фабрики `create_worker_engine()` и `create_worker_session_factory()` устраняют дублирование и централизуют конфигурацию.
+
+Статус:
+
+Accepted
+
+---
+
+## ADR-014
+
+Решение:
+
+Использовать PriceCache для инкапсуляции sync/async Redis логики.
+
+Причина:
+
+Дублирование кода `if self._redis_sync: ... elif self._redis: ...` в `PriceService`. Класс `PriceCache` инкапсулирует эту логику и предоставляет единый интерфейс `set()` и `get()`.
+
+Статус:
+
+Accepted
+
+---
+
+## ADR-015
+
+Решение:
+
+Использовать singleton-паттерн для Redis соединений.
+
+Причина:
+
+Функции `get_redis()` и `get_redis_sync()` создавали новое соединение при каждом вызове. Singleton через глобальные переменные `_async_redis` и `_sync_redis` переиспользует соединения и устраняет накладные расходы.
+
+Статус:
+
+Accepted
+
+---
+
+## ADR-016
+
+Решение:
+
+Использовать Rich traceback с ограничением locals и single traceback pattern.
+
+Причина:
+
+Traceback с locals полезен для отладки, но без ограничений выводит огромные HTML-страницы и дублируется между слоями. Конфигурация:
+- `locals_max_string=100` — обрезка строк
+- `locals_max_length=10` — обрезка контейнеров
+- Truncation до 200 символов в structlog
+- Single traceback — ошибка логируется один раз на верхнем уровне задачи
+
+Статус:
+
+Accepted
+
+---
+
 # Будущие архитектурные решения
 
 Список решений, которые потребуется принять позже:
@@ -784,6 +980,8 @@ Accepted
 * уведомления об изменении цены через Telegram;
 * авторизация через Telegram Login Widget;
 * поддержка Wildberries и Яндекс.Маркет.
+
+---
 
 # Архитектурные принципы
 
