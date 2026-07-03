@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from app.models.price_history import PriceHistory
 
 
-class SubscriptionStatus(str, Enum):
+class SubscriptionStatus(StrEnum):
     """Статусы подписки."""
 
     IDLE = "idle"  # Ожидает проверки

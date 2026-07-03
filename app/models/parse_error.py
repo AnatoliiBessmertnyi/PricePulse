@@ -11,27 +11,10 @@ if TYPE_CHECKING:
 
 class ParseError(Base, TimestampMixin):
     __tablename__ = "parse_errors"
-
-    id: Mapped[int] = mapped_column(
-        primary_key=True,
-    )
-
+    id: Mapped[int] = mapped_column(primary_key=True)
     subscription_id: Mapped[int] = mapped_column(
-        ForeignKey("subscriptions.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+        ForeignKey("subscriptions.id", ondelete="CASCADE"), nullable=False, index=True
     )
-
-    error_type: Mapped[str] = mapped_column(
-        String(100),
-        nullable=False,
-    )
-
-    error_message: Mapped[str] = mapped_column(
-        String(2048),
-        nullable=False,
-    )
-
-    subscription: Mapped["Subscription"] = relationship(
-        back_populates="parse_errors",
-    )
+    error_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    error_message: Mapped[str] = mapped_column(String(2048), nullable=False)
+    subscription: Mapped["Subscription"] = relationship(back_populates="parse_errors")

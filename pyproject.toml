@@ -88,14 +88,14 @@ select = [
     "PTH",  # flake8-use-pathlib
     "RUF",  # ruff-specific rules
 ]
-ignore = [
-    "S101",   # Allow assert in tests
-    "ARG002", # Allow unused method arguments (for interface compatibility)
-]
+ignore = ["S101", "ARG002", "RUF001", "RUF002", "RUF003", "S311", "B008"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "ARG", "DTZ"]
-"alembic/*" = ["ARG001"]
+"alembic/*" = ["ARG001", "E501"]
+"app/cli/**/*.py" = ["T201"]
+"scripts/**/*.py" = ["T201"]
+"app/bot/**/*.py" = ["ARG001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

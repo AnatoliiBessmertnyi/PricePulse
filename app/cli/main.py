@@ -70,7 +70,8 @@ class CLIApp:
         if not url:
             print("\n❌ Не удалось найти корректную ссылку в сообщении.")
             print(
-                "Убедитесь, что вы отправили ссылку на товар с поддерживаемого маркетплейса (ozon.ru).\n"
+                "Убедитесь, что вы отправили ссылку на товар "
+                "с поддерживаемого маркетплейса (ozon.ru).\n"
             )
             return
 
@@ -162,10 +163,11 @@ class CLIApp:
                             )
                         else:
                             success_time = last_success
-                        print(
-                            f"   🕐 Последняя проверка: {success_time.strftime('%Y-%m-%d %H:%M:%S')}"
-                        )
-                    except:
+                            print(
+                                f"   🕐 Последняя проверка: "
+                                f"{success_time.strftime('%Y-%m-%d %H:%M:%S')}"
+                            )
+                    except Exception:
                         print(f"   🕐 Последняя проверка: {last_success}")
 
                     if last_check and last_check != last_success:
@@ -176,10 +178,12 @@ class CLIApp:
                                 )
                             else:
                                 check_time = last_check
-                            print(
-                                f"   ⚠️ Последняя попытка: {check_time.strftime('%Y-%m-%d %H:%M:%S')} (без успеха)"
-                            )
-                        except:
+                                print(
+                                    f"   ⚠️ Последняя попытка: "
+                                    f"{check_time.strftime('%Y-%m-%d %H:%M:%S')} "
+                                    f"(без успеха)"
+                                )
+                        except Exception:
                             print(f"   ⚠️ Последняя попытка: {last_check} (без успеха)")
                 else:
                     print("   🕐 Цена ещё не получена")
@@ -191,10 +195,11 @@ class CLIApp:
                                 )
                             else:
                                 check_time = last_check
-                            print(
-                                f"   ⚠️ Последняя попытка: {check_time.strftime('%Y-%m-%d %H:%M:%S')}"
-                            )
-                        except:
+                                print(
+                                    f"   ⚠️ Последняя попытка: "
+                                    f"{check_time.strftime('%Y-%m-%d %H:%M:%S')}"
+                                )
+                        except Exception:
                             print(f"   ⚠️ Последняя попытка: {last_check}")
 
                 print(f"   🔗 {product_url}")
