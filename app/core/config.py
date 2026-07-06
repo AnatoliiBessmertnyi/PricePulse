@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     browser_pool_size: int = 2
     worker_concurrency: int = 4
 
+    proxy_list: str = ""
+    proxy_rotation_enabled: bool = False
+
     log_level: str = "INFO"
 
     @field_validator("price_check_interval")
@@ -69,6 +72,14 @@ class Settings(BaseSettings):
         if v_upper not in valid_levels:
             raise ValueError(f"log_level must be one of {valid_levels}")
         return v_upper
+
+    @computed_field
+    @property
+    def proxy_list_parsed(self) -> list[str]:
+        """Parse proxy list from comma-separated string."""
+        if not self.proxy_list:
+            return []
+        return [proxy.strip() for proxy in self.proxy_list.split(",") if proxy.strip()]
 
     @computed_field
     @property
