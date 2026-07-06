@@ -252,6 +252,34 @@ async def _check_all_subscriptions() -> None:
 
 Причина: глобальный engine привязан к event loop, созданному при импорте модуля. Celery использует **asyncio.run()**, который создаёт новый event loop для каждой задачи, что приводит к конфликтам.
 
+### Singleton engine для FastAPI
+
+Для FastAPI используется `@lru_cache` вместо глобальных переменных для создания singleton engine:
+
+```python
+from functools import lru_cache
+
+@lru_cache
+def get_engine():
+    return create_async_engine(
+        settings.postgres_url,
+        echo=settings.log_level == "DEBUG",
+        pool_pre_ping=True,
+    )
+
+@lru_cache
+def get_session_factory():
+    return async_sessionmaker(
+        bind=get_engine(),
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+```
+
+Преимущества:
+- Потокобезопасность из коробки
+- Автоматический singleton без глобальных переменных
+- Чище код без ручного управления состоянием
 
 ## 15. Playwright для парсинга маркетплейсов
 
@@ -307,6 +335,90 @@ browser = await p.chromium.launch(
 
 Эти флаги обязательны для запуска Chromium в Docker-контейнере от root.
 
+## 16. Атомарность операций
+
+Операции, затрагивающие несколько сущностей, должны быть атомарными.
+
+Плохо:
+
+```python
+for subscription in subscriptions:
+    parse_price.delay(subscription.id)
+    await repo.mark_last_check_now(subscription.id)  # Если delay() упадёт — уже обновлено
+```
+
+Хорошо:
+
+```python
+successful_ids = []
+for subscription in subscriptions:
+    try:
+        parse_price.delay(subscription.id)
+        successful_ids.append(subscription.id)
+    except Exception as e:
+        logger.error("failed_to_create_task", subscription_id=subscription.id, error=str(e))
+
+for sub_id in successful_ids:
+    await repo.mark_last_check_now(sub_id)
+await session.commit()
+```
+
+Причина: если создание задачи упадёт после нескольких итераций, часть подписок уже обновлена, а часть — нет. Это приводит к рассинхронизации данных.
+
+## 17. Оптимизация запросов к БД
+
+Каждый запрос к БД должен быть обоснован. Если операцию можно выполнить одним запросом — делаем одним запросом.
+
+Плохо:
+
+```python
+# 2 запроса: SELECT + DELETE
+subscription = await repo.get(subscription_id)
+if not subscription:
+    return False
+if subscription.user_id != user_id:
+    return False
+await repo.delete(subscription)
+```
+
+Хорошо:
+
+```python
+# 1 запрос: DELETE с WHERE
+deleted = await repo.delete_by_user(subscription_id, user_id)
+if deleted:
+    await session.commit()
+return deleted
+```
+
+```sql
+DELETE FROM subscriptions WHERE id = :id AND user_id = :user_id
+```
+
+Причина: лишний SELECT создаёт нагрузку на БД и увеличивает latency.
+
+## 18. Не оставлять отладочные логи в продакшене
+
+Отладочные логи (`logger.debug`, `logger.warning` с превью данных) должны удаляться перед merge в основную ветку.
+
+Запрещено:
+
+```python
+logger.debug("ozon_html_received", html_length=len(html))
+logger.warning("ozon_no_ld_json_found", html_preview=html[:500])
+logger.debug("ozon_data_state_blocks", blocks_found=len(blocks))
+```
+
+Разрешено:
+
+```python
+logger.info("ozon_parse_start", url=product_url)
+logger.info("ozon_parse_success", url=final_url, product_name=name, price=str(price))
+logger.error("ozon_parse_failed", url=product_url, error=str(e))
+```
+
+Причина: отладочные логи засоряют логи в продакшене, увеличивают объём данных и замедляют систему.
+
 
 # Архитектура
 
@@ -353,6 +465,17 @@ PostgreSQL
 * UserRepository
 * SubscriptionRepository
 * PriceHistoryRepository
+
+### Базовые методы
+
+Каждый репозиторий наследуется от `BaseRepository`, который предоставляет базовые методы:
+
+- `get(obj_id)` — получить объект по ID
+- `get_all()` — получить все объекты
+- `create(**kwargs)` — создать объект
+- `delete(obj)` — удалить объект
+
+Переопределение базовых методов запрещено, если они делают то же самое.
 
 ---
 
@@ -447,6 +570,7 @@ beat_schedule = {
 - Создавать собственный async engine
 - Получать данные из БД
 - Ставить задачи в очередь
+- **Обновлять `last_check_at` только для успешно созданных задач** (атомарность)
 - Закрывать engine в finally блоке
 
 ### Graceful Shutdown
@@ -479,6 +603,21 @@ class OzonParser(BaseParser):
 
 Все парсеры реализуют единый интерфейс.
 
+### Обработка недоступных товаров
+
+Если товар удалён или недоступен на маркетплейсе, парсер должен:
+
+1. Вернуть понятную ошибку (например, `ValueError("Ozon product schema not found")`)
+2. Ошибка логируется и сохраняется в `parse_errors`
+3. Подписка помечается как `FAILED`
+
+**Проблема:** подписка со статусом `FAILED` продолжает проверяться каждые N минут, что создаёт нагрузку на систему и маркетплейс.
+
+**Решение (Sprint 2):**
+- Детектировать редирект на страницу поиска (признак удалённого товара)
+- Счётчик ошибок — после N подряд ошибок деактивировать подписку
+- Новый статус `ARCHIVED` или `PRODUCT_UNAVAILABLE`
+
 ---
 
 # Логирование
@@ -501,6 +640,19 @@ logger.info(
     new_price=new_price,
 )
 ```
+
+### Уровни логирования
+
+- **INFO** — важные события (старт/успех операции)
+- **WARNING** — нештатные ситуации, но операция продолжена
+- **ERROR** — ошибки, требующие внимания
+- **DEBUG** — отладочная информация (только для разработки)
+
+### Правила
+
+- Не логировать большие объёмы данных (HTML, JSON)
+- Не оставлять отладочные логи в продакшене (см. принцип 18)
+- Использовать структурированные ключи вместо позиционных аргументов
 
 ---
 
@@ -559,6 +711,9 @@ feature/celery-worker
 * Есть обработка ошибок
 * Есть логирование
 * Нет сильной связанности между компонентами
+* **Нет отладочных логов**
+* **Операции атомарны**
+* **Нет лишних запросов к БД**
 
 ---
 
@@ -573,9 +728,11 @@ feature/celery-worker
 ✨ feat: add subscription api
 ✨ feat: integrate Playwright for Ozon parsing
 ✨ feat: add Celery Beat for periodic price checking
+✨ feat: final code polishing (query optimization, atomicity, lru_cache)
 🐛 fix: handle parser timeout
 🐛 fix: resolve event loop conflicts in Celery tasks
 ♻️ refactor: split parser service
+♻️ refactor: replace global variables with @lru_cache
 📝 docs: update architecture
 ✅ test: add parser tests
 🔧 chore: configure docker compose
@@ -583,6 +740,7 @@ feature/celery-worker
 🚀 feat: add celery worker
 🔒 security: validate incoming urls
 🔥 chore: remove deprecated code
+🔥 chore: remove debug logs from parser
 
 ---
 
@@ -611,4 +769,3 @@ feature/celery-worker
 5. Более устойчивой к отказам.
 
 Если решение ухудшает хотя бы один из пунктов — требуется пересмотр.
-

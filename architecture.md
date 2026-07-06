@@ -76,6 +76,55 @@ PricePulse — сервис мониторинга цен на маркетпл�
 
 FastAPI не занимается парсингом.
 
+
+---
+
+### 2. Новый подраздел в "FastAPI" — Database с `@lru_cache`
+
+**Добавить после раздела "FastAPI":**
+
+```markdown
+### Database Connection
+
+FastAPI использует `@lru_cache` для создания singleton engine и session factory:
+
+```python
+from functools import lru_cache
+
+@lru_cache
+def get_engine():
+    return create_async_engine(
+        settings.postgres_url,
+        echo=settings.log_level == "DEBUG",
+        pool_pre_ping=True,
+    )
+
+@lru_cache
+def get_session_factory():
+    return async_sessionmaker(
+        bind=get_engine(),
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+
+async def get_db() -> AsyncIterator[AsyncSession]:
+    async with get_session_factory()() as session:
+        yield session
+```
+
+Преимущества **@lru_cache** перед глобальными переменными:
+- Потокобезопасность из коробки
+- Автоматический singleton без ручного управления состоянием
+- Чище код без глобальных переменных **_engine** и **_async_session_factory**
+- Ленивая инициализация при первом вызове
+
+Отличие от Celery Worker:
+
+- FastAPI использует **@lru_cache** (один engine на всё приложение)
+- Celery Worker создаёт собственный engine для каждой задачи (через **create_worker_engine()**)
+
+Это связано с тем, что Celery использует **asyncio.run()** внутри синхронных задач, создавая новый event loop для каждой задачи, что приводит к конфликтам с глобальным engine.
+
 ---
 
 ## PostgreSQL
@@ -169,6 +218,30 @@ class PriceCache:
 
 1. Получает все активные подписки из PostgreSQL
 2. Для каждой подписки ставит задачу `parse_price` в очередь
+3. **Атомарно обновляет `last_check_at`** — только для успешно созданных задач
+
+### Атомарность операций
+
+Задача `check_all_subscriptions` гарантирует атомарность обновления `last_check_at`:
+
+```python
+# Сначала собираем ID успешно созданных задач
+successful_ids: list[int] = []
+for subscription in subscriptions:
+    try:
+        parse_price.delay(subscription.id)
+        successful_ids.append(subscription.id)
+    except Exception as e:
+        logger.error("failed_to_create_task", subscription_id=subscription.id, error=str(e))
+
+# Потом обновляем last_check_at только для успешных
+for sub_id in successful_ids:
+    await repo.mark_last_check_now(sub_id)
+
+await session.commit()
+```
+
+Это предотвращает рассинхронизацию: если **parse_price.delay()** упадёт после нескольких итераций, часть подписок не будет обновлена, что соответствует реальному состоянию (задачи не созданы).
 
 ### Database Factories
 
@@ -435,6 +508,38 @@ app/repositories/
 
 ---
 
+### Оптимизация запросов
+
+Репозитории следуют принципу "один запрос вместо двух", если операция может быть выполнена атомарно.
+
+Пример — удаление подписки:
+
+```python
+# Было: 2 запроса (SELECT + DELETE)
+subscription = await repo.get(subscription_id)
+if not subscription:
+    return False
+if subscription.user_id != user_id:
+    return False
+await repo.delete(subscription)
+
+# Стало: 1 запрос (DELETE с WHERE)
+deleted = await repo.delete_by_user(subscription_id, user_id)
+if deleted:
+    await session.commit()
+return deleted
+```
+
+```SQL
+DELETE FROM subscriptions WHERE id = :id AND user_id = :user_id
+```
+
+Это снижает нагрузку на БД и уменьшает latency.
+
+Правило: Если базовый метод `BaseRepository` уже реализует нужную функциональность, переопределение запрещено (например, `get_all()` не переопределяется в `SubscriptionRepository`, если делает то же самое).
+
+---
+
 ## Worker Layer
 
 Содержит:
@@ -582,6 +687,28 @@ Celery задачи синхронные, но внутри используют
 * Видеть, что система жива и пытается проверять цены
 * Понимать, насколько актуальны данные о цене
 * Выявлять проблемы с парсером
+
+---
+
+### Обработка недоступных товаров
+
+Если товар удалён или недоступен на маркетплейсе, парсер возвращает ошибку (например, `ValueError("Ozon product schema not found")`).
+
+**Текущее поведение:**
+1. Ошибка логируется и сохраняется в `parse_errors`
+2. Подписка помечается как `FAILED`
+3. При следующей проверке (через `PRICE_CHECK_INTERVAL`) подписка снова попадает в очередь, так как `get_subscriptions_for_check` проверяет статусы `IDLE` и `FAILED`
+
+**Проблема:**
+Если товар удалён навсегда, система будет спамить маркетплейс запросами каждые N минут. За день это 720 запросов × запуск Playwright = значительная нагрузка на систему и маркетплейс.
+
+**Решение (отложено до Sprint 2):**
+1. Детектировать редирект на страницу поиска (признак удалённого товара)
+2. Счётчик ошибок — после N подряд ошибок деактивировать подписку автоматически
+3. Новый статус `ARCHIVED` или `PRODUCT_UNAVAILABLE`, который исключается из проверки
+
+**Временное решение:**
+Пользователь может вручную удалить подписку через API/CLI/бот.
 
 ---
 
@@ -962,6 +1089,91 @@ Traceback с locals полезен для отладки, но без огран
 
 Статус:
 
+Accepted
+
+---
+
+### 3. Новый ADR-017 — `@lru_cache` для FastAPI database
+
+```markdown
+## ADR-017
+
+Решение:
+
+Использовать `@lru_cache` вместо глобальных переменных для singleton database engine в FastAPI.
+
+Причина:
+
+Ранее использовались глобальные переменные `_engine` и `_async_session_factory` с ручной проверкой `if _engine is None`. Это создавало неочевидное состояние и требовало ручного управления.
+
+`@lru_cache` обеспечивает:
+- Автоматический singleton (кэширует результат первого вызова)
+- Потокобезопасность из коробки
+- Ленивую инициализацию
+- Чище код без глобальных переменных
+
+Пример:
+
+```python
+# Было
+_engine = None
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        _engine = create_async_engine(...)
+    return _engine
+
+# Стало
+@lru_cache
+def get_engine():
+    return create_async_engine(...)
+```
+
+Статус:
+
+Accepted
+
+---
+
+### 4. Новый ADR-018 — Атомарность в `check_all_subscriptions`
+
+## ADR-018
+
+Решение:
+
+Обновлять `last_check_at` только для успешно созданных задач в `check_all_subscriptions`.
+
+Причина:
+
+Ранее обновление происходило сразу после создания задачи:
+
+```python
+for subscription in subscriptions:
+    parse_price.delay(subscription.id)
+    await repo.mark_last_check_now(subscription.id)  # Если delay() упадёт — уже обновлено
+```
+
+Если `parse_price.delay()` упадёт после нескольких итераций, часть подписок уже обновлена (`last_check_at`), а часть — нет. Это создаёт рассинхронизацию: система считает, что проверила подписку, но задача не создана.
+
+Новая реализация:
+```python
+successful_ids = []
+for subscription in subscriptions:
+    try:
+        parse_price.delay(subscription.id)
+        successful_ids.append(subscription.id)
+    except Exception as e:
+        logger.error("failed_to_create_task", subscription_id=subscription.id, error=str(e))
+
+for sub_id in successful_ids:
+    await repo.mark_last_check_now(sub_id)
+
+await session.commit()
+```
+
+Это гарантирует атомарность: `last_check_at` обновляется только для подписок, для которых действительно созданы задачи.
+Статус:
 Accepted
 
 ---
