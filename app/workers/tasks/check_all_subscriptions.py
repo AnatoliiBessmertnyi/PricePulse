@@ -40,13 +40,12 @@ async def _check_all_subscriptions() -> None:
                 return
 
             logger.info("subscriptions_ready_for_check", count=len(subscriptions))
-            created_tasks = 0
 
+            successful_ids: list[int] = []
             for subscription in subscriptions:
                 try:
                     parse_price.delay(subscription.id)
-                    await repo.mark_last_check_now(subscription.id)
-                    created_tasks += 1
+                    successful_ids.append(subscription.id)
                 except Exception as e:
                     logger.error(
                         "failed_to_create_task",
@@ -54,9 +53,14 @@ async def _check_all_subscriptions() -> None:
                         error=str(e),
                     )
 
+            for sub_id in successful_ids:
+                await repo.mark_last_check_now(sub_id)
+
             await session.commit()
             logger.info(
-                "check_tasks_created", count=created_tasks, total=len(subscriptions)
+                "check_tasks_created",
+                count=len(successful_ids),
+                total=len(subscriptions),
             )
     finally:
         await engine.dispose()
