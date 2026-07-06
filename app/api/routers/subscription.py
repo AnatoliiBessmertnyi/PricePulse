@@ -1,27 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.dependencies import (
-    get_price_service,
-    get_subscription_service,
-)
+from app.api.dependencies import get_price_service, get_subscription_service
 from app.api.schemas.subscription import (
     SubscriptionCreate,
     SubscriptionResponse,
+    UpdateTargetPrice,
 )
 from app.services.price import PriceService
 from app.services.subscription import SubscriptionService
 
-router = APIRouter(
-    prefix="/api/v1/subscriptions",
-    tags=["subscriptions"],
-)
+router = APIRouter(prefix="/api/v1/subscriptions", tags=["subscriptions"])
 
 
-@router.post(
-    "",
-    response_model=SubscriptionResponse,
-    status_code=201,
-)
+@router.post("", response_model=SubscriptionResponse, status_code=201)
 async def create_subscription(
     data: SubscriptionCreate,
     service: SubscriptionService = Depends(get_subscription_service),
@@ -32,38 +23,23 @@ async def create_subscription(
         product_url=str(data.product_url),
         target_price=data.target_price,
     )
-
     return SubscriptionResponse.model_validate(subscription)
 
 
-@router.get(
-    "/{user_id}",
-    response_model=list[SubscriptionResponse],
-)
+@router.get("/{user_id}", response_model=list[SubscriptionResponse])
 async def get_user_subscriptions(
-    user_id: int,
-    service: SubscriptionService = Depends(
-        get_subscription_service,
-    ),
+    user_id: int, service: SubscriptionService = Depends(get_subscription_service)
 ) -> list[SubscriptionResponse]:
-    subscriptions = await service.get_user_subscriptions(
-        user_id,
-    )
+    subscriptions = await service.get_user_subscriptions(user_id)
     return [
-        SubscriptionResponse.model_validate(
-            subscription,
-        )
+        SubscriptionResponse.model_validate(subscription)
         for subscription in subscriptions
     ]
 
 
-@router.get(
-    "/{subscription_id}/prices",
-    response_model=list[dict],
-)
+@router.get("/{subscription_id}/prices", response_model=list[dict])
 async def get_price_history(
-    subscription_id: int,
-    price_service: PriceService = Depends(get_price_service),
+    subscription_id: int, price_service: PriceService = Depends(get_price_service)
 ) -> list[dict]:
     """Получить историю цен для подписки"""
     history = await price_service.get_price_history(subscription_id)
@@ -78,10 +54,7 @@ async def get_price_history(
     ]
 
 
-@router.post(
-    "/{subscription_id}/parse",
-    status_code=202,
-)
+@router.post("/{subscription_id}/parse", status_code=202)
 async def trigger_manual_parsing(
     subscription_id: int,
     subscription_service: SubscriptionService = Depends(get_subscription_service),
@@ -94,23 +67,14 @@ async def trigger_manual_parsing(
     from app.workers.tasks.parse_price import parse_price
 
     parse_price.delay(subscription_id)
-
-    return {
-        "status": "parsing_queued",
-        "subscription_id": subscription_id,
-    }
+    return {"status": "parsing_queued", "subscription_id": subscription_id}
 
 
-@router.get(
-    "/{subscription_id}/latest-price",
-    response_model=dict,
-)
+@router.get("/{subscription_id}/latest-price", response_model=dict)
 async def get_latest_price(
-    subscription_id: int,
-    price_service: PriceService = Depends(get_price_service),
+    subscription_id: int, price_service: PriceService = Depends(get_price_service)
 ) -> dict:
     """Получить последнюю цену для подписки (из кэша или БД)"""
-    # Проверяем кэш
     if price_service._redis:
         cache_key = f"price:latest:{subscription_id}"
         cached_price = await price_service._redis.get(cache_key)
@@ -121,7 +85,6 @@ async def get_latest_price(
                 "source": "cache",
             }
 
-    # Если нет в кэше, берем из БД
     price = await price_service.get_latest_price(subscription_id)
     if price is None:
         raise HTTPException(status_code=404, detail="Price not found")
@@ -133,10 +96,7 @@ async def get_latest_price(
     }
 
 
-@router.delete(
-    "/{subscription_id}",
-    status_code=204,
-)
+@router.delete("/{subscription_id}", status_code=204)
 async def delete_subscription(
     subscription_id: int,
     user_id: int,
@@ -146,3 +106,20 @@ async def delete_subscription(
     deleted = await service.delete_subscription(subscription_id, user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Subscription not found")
+
+
+@router.patch("/{subscription_id}/target-price", response_model=SubscriptionResponse)
+async def update_target_price(
+    subscription_id: int,
+    user_id: int,
+    data: UpdateTargetPrice,
+    service: SubscriptionService = Depends(get_subscription_service),
+) -> SubscriptionResponse:
+    """Обновить target_price для подписки"""
+    subscription = await service.update_target_price(
+        subscription_id=subscription_id, user_id=user_id, target_price=data.target_price
+    )
+    if not subscription:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+
+    return SubscriptionResponse.model_validate(subscription)
