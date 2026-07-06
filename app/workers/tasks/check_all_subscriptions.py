@@ -1,11 +1,10 @@
 import asyncio
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.repositories.subscription import SubscriptionRepository
 from app.workers.celery_app import celery_app
+from app.workers.database import create_worker_engine, create_worker_session_factory
 from app.workers.settings import TASK_CHECK_ALL_SUBSCRIPTIONS
 from app.workers.tasks.parse_price import parse_price
 
@@ -23,11 +22,8 @@ async def _check_all_subscriptions() -> None:
     Получить подписки, готовые к проверке,
     и создать задачи для их проверки.
     """
-    engine = create_async_engine(settings.postgres_url, echo=False, pool_pre_ping=True)
-
-    async_session_factory = async_sessionmaker(
-        bind=engine, class_=AsyncSession, expire_on_commit=False
-    )
+    engine = create_worker_engine()
+    async_session_factory = create_worker_session_factory(engine)
 
     try:
         async with async_session_factory() as session:
