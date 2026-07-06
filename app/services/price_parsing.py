@@ -38,34 +38,21 @@ class PriceParsingService:
         try:
             product_data = await parser.parse(subscription.product_url)
             price = product_data.current_price
-        except ParserError as e:
-            logger.error(
-                "price_parsing_failed",
-                subscription_id=subscription_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-
-            await self._parse_error_repository.create(
-                subscription_id=subscription_id,
-                error_type=type(e).__name__,
-                error_message=str(e),
-            )
-            await self._subscription_repository.session.commit()
-            raise
-
         except Exception as e:
-            logger.error(
-                "unexpected_parsing_error",
-                subscription_id=subscription_id,
-                error=str(e),
-                error_type=type(e).__name__,
+            is_parser_error = isinstance(e, ParserError)
+            error_message = (
+                str(e) if is_parser_error else str(e)[:ERROR_MESSAGE_MAX_LENGTH]
             )
-
+            logger_name = (
+                "price_parsing_failed"
+                if is_parser_error
+                else "unexpected_parsing_error"
+            )
+            logger.exception(logger_name, subscription_id=subscription_id)
             await self._parse_error_repository.create(
                 subscription_id=subscription_id,
                 error_type=type(e).__name__,
-                error_message=str(e)[:ERROR_MESSAGE_MAX_LENGTH],
+                error_message=error_message,
             )
             await self._subscription_repository.session.commit()
             raise
