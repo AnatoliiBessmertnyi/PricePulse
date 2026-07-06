@@ -44,19 +44,10 @@ class PriceCache:
 
 class PriceService:
     def __init__(
-        self,
-        price_history_repository: PriceHistoryRepository,
-        price_cache: PriceCache | None = None,
-        redis_client: Redis | None = None,
-        redis_client_sync: SyncRedis | None = None,
+        self, price_history_repository: PriceHistoryRepository, price_cache: PriceCache
     ) -> None:
         self._price_history_repository = price_history_repository
-        if price_cache is not None:
-            self._price_cache = price_cache
-        else:
-            self._price_cache = PriceCache(
-                redis_sync=redis_client_sync, redis_async=redis_client
-            )
+        self._price_cache = price_cache
 
     async def save_price(self, subscription_id: int, price: Decimal) -> None:
         await self._price_history_repository.create(
