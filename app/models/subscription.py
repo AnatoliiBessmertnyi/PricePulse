@@ -52,3 +52,9 @@ class Subscription(Base, TimestampMixin):
     price_history: Mapped[list["PriceHistory"]] = relationship(
         back_populates="subscription", cascade="all, delete-orphan"
     )
+    alert_sent: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Было ли отправлено уведомление о достижении target_price",
+    )
