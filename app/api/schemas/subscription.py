@@ -23,4 +23,9 @@ class SubscriptionResponse(BaseModel):
     last_check_at: datetime | None
     last_success_at: datetime | None
     created_at: datetime
+    alert_sent: bool
     model_config = {"from_attributes": True}
+
+
+class UpdateTargetPrice(BaseModel):
+    target_price: Decimal | None
