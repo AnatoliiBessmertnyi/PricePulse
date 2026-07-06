@@ -43,14 +43,9 @@ class SubscriptionService:
         user_id: int,
     ) -> bool:
         """Удалить подписку. Возвращает True если удалена, False если не найдена."""
-        subscription = await self.subscription_repository.get(subscription_id)
-
-        if not subscription:
-            return False
-
-        if subscription.user_id != user_id:
-            return False
-
-        await self.subscription_repository.delete(subscription)
-        await self.subscription_repository.session.commit()
-        return True
+        deleted = await self.subscription_repository.delete_by_user(
+            subscription_id, user_id
+        )
+        if deleted:
+            await self.subscription_repository.session.commit()
+        return deleted

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import delete, or_, select, update
 
 from app.models.subscription import Subscription, SubscriptionStatus
 from app.repositories.base import BaseRepository
@@ -21,14 +21,14 @@ class SubscriptionRepository(BaseRepository[Subscription]):
 
         return list(result.scalars().all())
 
-    async def get_all(
-        self,
-    ) -> list[Subscription]:
-        stmt = select(Subscription)
-
-        result = await self.session.execute(stmt)
-
-        return list(result.scalars().all())
+    async def delete_by_user(self, subscription_id: int, user_id: int) -> bool:
+        result = await self.session.execute(
+            delete(Subscription).where(
+                Subscription.id == subscription_id,
+                Subscription.user_id == user_id,
+            )
+        )
+        return result.rowcount > 0
 
     async def get_subscriptions_for_check(
         self,
