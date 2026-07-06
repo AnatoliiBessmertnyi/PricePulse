@@ -32,6 +32,23 @@ class ProcessBrowser:
         self._playwright = None
         self._initialized = True
 
+    async def _ensure_browser(self) -> None:
+        """Убедиться что браузер запущен."""
+        if self._browser is None:
+            logger.info("http_client_launching_browser")
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-blink-features=AutomationControlled",
+                ],
+            )
+            logger.info("http_client_browser_launched")
+
     async def get_page(self) -> Page:
         """
         Получить страницу из браузера текущего процесса.
@@ -43,19 +60,8 @@ class ProcessBrowser:
             logger.info("http_client_reusing_browser")
             return self._page
 
-        logger.info("http_client_launching_browser")
-        self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-blink-features=AutomationControlled",
-            ],
-        )
-        logger.info("http_client_browser_launched")
+        await self._ensure_browser()
+
         self._context = await self._browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -78,6 +84,42 @@ class ProcessBrowser:
         self._page = await self._context.new_page()
         logger.info("http_client_browser_ready")
         return self._page
+
+    async def get_page_with_proxy(self, proxy_url: str | None = None) -> Page:
+        """
+        Создать новый контекст с прокси и получить Page.
+
+        Args:
+            proxy_url: URL прокси или None для прямого запроса
+
+        Returns:
+            Playwright Page
+        """
+        await self._ensure_browser()
+        if proxy_url is None:
+            return await self.get_page()
+
+        context = await self._browser.new_context(
+            proxy={"server": proxy_url},
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1920, "height": 1080},
+            locale="ru-RU",
+            timezone_id="Europe/Moscow",
+        )
+        await context.add_init_script(
+            """
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+            """
+        )
+        page = await context.new_page()
+        logger.info("page_created_with_proxy", proxy_url=proxy_url)
+        return page
 
     async def close(self) -> None:
         """
@@ -125,16 +167,6 @@ class ProcessBrowser:
 def get_process_browser() -> ProcessBrowser:
     """Получить singleton экземпляр ProcessBrowser для текущего процесса."""
     return ProcessBrowser()
-
-
-async def get_page() -> Page:
-    """
-    Получить страницу из браузера текущего процесса.
-
-    Каждый worker процесс имеет свой браузер.
-    Браузер создается при первом вызове и переиспользуется.
-    """
-    return await get_process_browser().get_page()
 
 
 async def close_page(_page: Page) -> None:
