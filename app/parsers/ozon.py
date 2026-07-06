@@ -36,24 +36,7 @@ class OzonParser(BaseParser):
     async def parse(self, product_url: str) -> ProductData:
         logger.info("ozon_parse_start", url=product_url)
         html, final_url = await self.http_client.get(product_url)
-        logger.debug(
-            "ozon_html_received",
-            original_url=product_url,
-            final_url=final_url,
-            html_length=len(html),
-        )
         soup = _SoupProxy(BeautifulSoup(html, "html.parser"))
-        ld_json_scripts = soup.find_all("script", attrs={"type": "application/ld+json"})
-        if not ld_json_scripts:
-            all_scripts = soup.find_all("script")
-            logger.warning(
-                "ozon_no_ld_json_found",
-                url=final_url,
-                total_scripts=len(all_scripts),
-                script_types=[s.get("type") for s in all_scripts if s.get("type")],
-                html_preview=html[:200],
-            )
-
         product_name = self._extract_product_name(soup)
         variant = self._extract_selected_variant(soup, final_url)
         if variant is None:
@@ -101,9 +84,6 @@ class OzonParser(BaseParser):
             return None
 
         blocks = soup.find_all("div", attrs={"data-state": True})
-        logger.debug(
-            "ozon_data_state_blocks", url=product_url, sku=sku, blocks_found=len(blocks)
-        )
         for block in blocks:
             state = block.get("data-state")
             if not state:
