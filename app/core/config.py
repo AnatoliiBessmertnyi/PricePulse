@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     rabbitmq_default_pass: str
 
     telegram_bot_token: str | None = None
+    telegram_api_url: str | None = None
     fastapi_base_url: str = "http://api:8000"
 
     price_check_interval: int = 900
