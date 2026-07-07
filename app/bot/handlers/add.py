@@ -2,54 +2,106 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.bot.client import HTTPClient
+from app.bot.keyboards.main_menu import get_back_to_main_keyboard
+from app.bot.keyboards.subscriptions import get_cancel_keyboard
+from app.bot.states import WAITING_FOR_URL
 from app.bot.utils.url_parser import clean_and_validate_url
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def add_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
     """
-    Обработчик команды /add <url>
+    Обработчик команды /add или callback "menu_add"
 
-    Добавляет подписку на товар.
-    Поддерживает текст с URL (например, "Смотри что я нашел! https://ozon.ru/...")
+    Запрашивает у пользователя ссылку на товар.
+    Возвращает состояние WAITING_FOR_URL для ConversationHandler.
     """
     if not update.effective_user:
         logger.error("add_no_user", update=update)
-        await update.message.reply_text(
-            "Ошибка: не удалось получить информацию о пользователе."
-        )
-        return
+        if update.callback_query:
+            await update.callback_query.answer("Ошибка: нет пользователя")
+        elif update.message:
+            await update.message.reply_text(
+                "Ошибка: не удалось получить информацию о пользователе."
+            )
+        return -1
 
     chat_id = update.effective_user.id
-    if not context.args or len(context.args) == 0:
-        await update.message.reply_text(
-            "Использование: /add <ссылка на товар>\n\n"
-            "Пример:\n"
-            "/add https://www.ozon.ru/product/smartfon-samsung-galaxy-a54-256gb/"
-        )
-        return
+    logger.info("add_command_start", chat_id=chat_id)
 
-    text = " ".join(context.args)
-    logger.info("add_command", chat_id=chat_id, text=text)
+    message = (
+        "➕ *Добавление подписки*\n\n"
+        "Отправьте ссылку на товар с Ozon.\n\n"
+        "💡 Можно отправить:\n"
+        "• Просто ссылку: https://ozon.ru/product/...\n"
+        '• Текст с ссылкой: "Смотри что я нашел! https://ozon.ru/..."\n'
+        "• Поделиться из приложения Ozon\n\n"
+        "Для отмены нажмите кнопку ниже:"
+    )
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            message,
+            parse_mode="Markdown",
+            reply_markup=get_cancel_keyboard(),
+        )
+    elif update.message:
+        await update.message.reply_text(
+            message,
+            parse_mode="Markdown",
+            reply_markup=get_cancel_keyboard(),
+        )
+
+    return WAITING_FOR_URL
+
+
+async def handle_url(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """
+    Обработчик получения URL от пользователя
+
+    Валидирует URL и создаёт подписку.
+    """
+    if not update.effective_user or not update.message:
+        logger.error("handle_url_no_user_or_message", update=update)
+        return WAITING_FOR_URL
+
+    chat_id = update.effective_user.id
+    text = update.message.text
+
+    logger.info("handle_url", chat_id=chat_id, text=text[:100])
+
+    # Валидация URL
     url, marketplace = clean_and_validate_url(text)
+
     if not url:
         await update.message.reply_text(
-            "Не удалось найти корректную ссылку в сообщении.\n\n"
+            "❌ Не удалось найти корректную ссылку в сообщении.\n\n"
             "Убедитесь, что вы отправили ссылку на товар "
-            "с поддерживаемого маркетплейса (ozon.ru)."
+            "с поддерживаемого маркетплейса (ozon.ru).\n\n"
+            'Попробуйте ещё раз или нажмите "❌ Отмена".',
+            reply_markup=get_cancel_keyboard(),
         )
-        return
+        return WAITING_FOR_URL
 
     if not marketplace:
         await update.message.reply_text(
-            f"Маркетплейс не поддерживается.\n\n"
+            f"❌ Маркетплейс не поддерживается.\n\n"
             f"Поддерживаемые маркетплейсы: Ozon (ozon.ru)\n\n"
-            f"Отправленная ссылка: {url}"
+            f"Отправленная ссылка: {url}\n\n"
+            'Попробуйте ещё раз или нажмите "❌ Отмена".',
+            reply_markup=get_cancel_keyboard(),
         )
-        return
+        return WAITING_FOR_URL
 
+    # Создаём подписку
     try:
         async with HTTPClient() as client:
             user_data = await client.create_user(
@@ -63,6 +115,7 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         subscription_id = subscription_data.get("id")
         product_name = subscription_data.get("product_name")
         current_price = subscription_data.get("current_price")
+
         logger.info(
             "subscription_created",
             subscription_id=subscription_id,
@@ -71,34 +124,76 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             marketplace=marketplace,
         )
 
-        response = "✅ Подписка успешно добавлена!\n\n"
+        response = "✅ *Подписка успешно добавлена!*\n\n"
         if product_name:
-            response += f"📦 Товар: {product_name}\n"
-
-        response += f"🔗 Ссылка: {url}\n"
+            response += f"📦 *Товар:* {product_name}\n"
+        response += f"🔗 *Ссылка:* {url}\n"
         if current_price is not None:
-            response += f"💰 Цена: {current_price} ₽\n"
-
+            response += f"💰 *Цена:* {current_price} ₽\n"
         response += (
-            "\nСистема будет проверять цену каждые 15 минут "
+            "\n💡 Система будет проверять цену каждые 15 минут "
             "и уведомит вас при снижении."
         )
-        await update.message.reply_text(response)
+
+        await update.message.reply_text(
+            response,
+            parse_mode="Markdown",
+            reply_markup=get_back_to_main_keyboard(),
+        )
+
+        return -1  # Завершаем ConversationHandler
 
     except Exception as e:
-        logger.error("add_command_failed", chat_id=chat_id, url=url, error=str(e))
+        logger.error("handle_url_failed", chat_id=chat_id, url=url, error=str(e))
         error_message = str(e)
         if "400" in error_message:
             await update.message.reply_text(
-                "Ошибка: некорректные данные. Проверьте ссылку и попробуйте снова."
+                "❌ Ошибка: некорректные данные. Проверьте ссылку и попробуйте снова.\n\n"
+                'Попробуйте ещё раз или нажмите "❌ Отмена".',
+                reply_markup=get_cancel_keyboard(),
             )
         elif "404" in error_message:
             await update.message.reply_text(
-                "Ошибка: товар не найден. Проверьте ссылку."
+                "❌ Ошибка: товар не найден. Проверьте ссылку.\n\n"
+                'Попробуйте ещё раз или нажмите "❌ Отмена".',
+                reply_markup=get_cancel_keyboard(),
             )
         elif "500" in error_message:
-            await update.message.reply_text("Ошибка сервера. Попробуйте позже.")
+            await update.message.reply_text(
+                "❌ Ошибка сервера. Попробуйте позже.\n\n"
+                'Попробуйте ещё раз или нажмите "❌ Отмена".',
+                reply_markup=get_cancel_keyboard(),
+            )
         else:
             await update.message.reply_text(
-                "Произошла ошибка при добавлении подписки. Попробуйте позже."
+                "❌ Произошла ошибка при добавлении подписки. Попробуйте позже.\n\n"
+                'Попробуйте ещё раз или нажмите "❌ Отмена".',
+                reply_markup=get_cancel_keyboard(),
             )
+
+        return WAITING_FOR_URL
+
+
+async def cancel_add(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """
+    Отмена добавления подписки
+
+    Возвращает пользователя в главное меню.
+    """
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            "❌ Добавление отменено.\n\nВыберите действие:",
+        )
+    elif update.message:
+        await update.message.reply_text(
+            "❌ Добавление отменено.\n\nВыберите действие:",
+        )
+
+    logger.info(
+        "cancel_add",
+        chat_id=update.effective_user.id if update.effective_user else None,
+    )
+    return -1  # Завершаем ConversationHandler
