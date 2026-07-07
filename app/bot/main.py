@@ -1,12 +1,9 @@
 import signal
 import sys
 
-from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes,
-)
+from telegram import Bot, Update
+from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.request import HTTPXRequest
 
 from app.bot.config import bot_settings
 from app.bot.handlers.add import add_command
@@ -44,7 +41,6 @@ async def error_handler(
 
 def main():
     """Точка входа для запуска бота"""
-    # Настройка логирования при старте
     setup_logging(settings.log_level)
 
     if not bot_settings.telegram_bot_token:
@@ -53,26 +49,45 @@ def main():
 
     logger.info("starting_bot")
 
-    # Создаём приложение бота с увеличенными timeout
-    application = (
-        Application.builder()
-        .token(bot_settings.telegram_bot_token)
-        .connect_timeout(30.0)
-        .read_timeout(30.0)
-        .write_timeout(30.0)
-        .pool_timeout(30.0)
-        .build()
-    )
+    if bot_settings.telegram_api_url:
+        # Используем Cloudflare Worker как кастомный Telegram API URL
+        logger.info("using_custom_api_url", url=bot_settings.telegram_api_url)
+        api_url = bot_settings.telegram_api_url.rstrip("/")
+        
+        # Создаём HTTPXRequest с таймаутами
+        request = HTTPXRequest(
+            connect_timeout=30.0,
+            read_timeout=30.0,
+            write_timeout=30.0,
+            pool_timeout=30.0,
+        )
+        
+        # Создаём Bot объект с плейсхолдером {token}
+        # Библиотека сама заменит {token} на реальный токен
+        bot = Bot(
+            token=bot_settings.telegram_bot_token,
+            base_url=api_url + "/bot{token}",
+            base_file_url=api_url + "/file/bot{token}",
+            request=request,
+        )
+        application = Application.builder().bot(bot).build()
+    else:
+        # Стандартный режим без кастомного API URL
+        application = (
+            Application.builder()
+            .token(bot_settings.telegram_bot_token)
+            .connect_timeout(30.0)
+            .read_timeout(30.0)
+            .write_timeout(30.0)
+            .pool_timeout(30.0)
+            .build()
+        )
 
-    # Регистрируем обработчики команд
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("add", add_command))
     application.add_handler(CommandHandler("list", list_command))
-
-    # Регистрируем глобальный обработчик ошибок
     application.add_error_handler(error_handler)
 
-    # Обработка graceful shutdown
     def shutdown_handler(signum, frame):
         logger.info("shutdown_signal_received", signum=signum)
         application.stop()
@@ -81,11 +96,12 @@ def main():
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
-    # Запускаем бота
     logger.info("bot_started")
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
+        poll_interval=1.0,
+        timeout=5.0,
     )
     logger.info("bot_stopped")
 
