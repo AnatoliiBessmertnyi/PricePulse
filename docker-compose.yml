@@ -88,9 +88,6 @@ services:
     env_file:
       - .env
     command: celery -A app.workers.celery_app:celery_app worker --pool=prefork --concurrency=2 --loglevel=info
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
     extra_hosts:
       - "ozon.ru:185.73.194.82"
       - "www.ozon.ru:185.73.194.82"

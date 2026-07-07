@@ -67,9 +67,14 @@ class PriceParsingService:
         subscription.last_success_at = now
 
         if self._should_send_alert(subscription, price):
-            notification_service = NotificationService()
-            await notification_service.notify_price_drop(subscription)
-            subscription.alert_sent = True
+            try:
+                notification_service = NotificationService()
+                notification_service.notify_price_drop(subscription)
+                subscription.alert_sent = True
+            except Exception as e:
+                logger.error(
+                    "notification_error", subscription_id=subscription.id, error=str(e)
+                )
 
         if product_data.product_name:
             subscription.product_name = product_data.product_name

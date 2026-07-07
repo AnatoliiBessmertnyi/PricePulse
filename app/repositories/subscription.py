@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, or_, select, update
+from sqlalchemy.orm import joinedload
 
 from app.models.subscription import Subscription, SubscriptionStatus
 from app.repositories.base import BaseRepository
@@ -8,6 +9,16 @@ from app.repositories.base import BaseRepository
 
 class SubscriptionRepository(BaseRepository[Subscription]):
     model = Subscription
+
+    async def get(self, obj_id: int) -> Subscription | None:
+        """Получить подписку с загруженным пользователем (для уведомлений)."""
+        stmt = (
+            select(Subscription)
+            .options(joinedload(Subscription.user))
+            .where(Subscription.id == obj_id)
+        )
+        result = await self.session.execute(stmt)
+        return result.unique().scalar_one_or_none()
 
     async def get_by_user_id(self, user_id: int) -> list[Subscription]:
         stmt = select(Subscription).where(Subscription.user_id == user_id)
