@@ -1,3 +1,6 @@
+import asyncio
+import contextlib
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -14,33 +17,26 @@ logger = get_logger(__name__)
 SUBSCRIPTIONS_PER_PAGE = 5
 
 
-async def button_handler(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> None:
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Обработчик нажатий на inline кнопки
 
     Роутинг callback queries к соответствующим обработчикам.
     """
     query = update.callback_query
-
     if not query:
         return
 
-    await query.answer()
-
+    await query.answer("⏳")
     callback_data = query.data
     chat_id = query.from_user.id if query.from_user else None
-
     logger.info("callback_received", chat_id=chat_id, callback_data=callback_data)
 
     try:
         # Главное меню
         if callback_data == "back_main":
             await query.edit_message_text(
-                "🏠 *Главное меню*\n\nВыберите действие:",
-                parse_mode="Markdown",
+                "🏠 Главное меню\n\nВыберите действие:",
                 reply_markup=get_main_menu_keyboard(),
             )
 
@@ -62,9 +58,17 @@ async def button_handler(
         elif callback_data == "menu_help":
             await help_command(update, context)
 
+        # Отмена добавления подписки
+        elif callback_data == "cancel_add":
+            await query.edit_message_text(
+                "🏠 Главное меню\n\nВыберите действие:",
+                reply_markup=get_main_menu_keyboard(),
+            )
+
         # Обновление списка подписок
         elif callback_data == "refresh_list":
             context.user_data["list_page"] = 0
+            context.user_data["is_refresh"] = True
             await list_command(update, context)
 
         # Пагинация списка подписок
@@ -85,16 +89,13 @@ async def button_handler(
             await confirm_delete(update, context, subscription_id)
 
         # Выполнить удаление
-        # Выполнить удаление
         elif callback_data.startswith("delete_yes_"):
             subscription_id = int(callback_data.split("_")[-1])
             await execute_delete(update, context, subscription_id)
-            import asyncio
-
+            context.user_data["cached_subscriptions"] = None
             await asyncio.sleep(2)
             await query.edit_message_text(
-                "🏠 *Главное меню*\n\nВыберите действие:",
-                parse_mode="Markdown",
+                "🏠 Главное меню\n\nВыберите действие:",
                 reply_markup=get_main_menu_keyboard(),
             )
 
@@ -112,7 +113,5 @@ async def button_handler(
             callback_data=callback_data,
             error=str(e),
         )
-        try:
+        with contextlib.suppress(Exception):
             await query.edit_message_text("Произошла ошибка. Попробуйте позже.")
-        except Exception:
-            pass

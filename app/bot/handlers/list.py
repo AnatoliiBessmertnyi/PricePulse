@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -31,12 +33,29 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     logger.info("list_command", chat_id=chat_id, page=page)
 
     try:
+        user_id = context.user_data.get("user_id")
+        is_refresh = context.user_data.get("is_refresh", False)
+        context.user_data["is_refresh"] = False
+
         async with HTTPClient() as client:
-            user_data = await client.create_user(
-                chat_id=chat_id, username=update.effective_user.username
-            )
-            user_id = user_data.get("id")
-            subscriptions = await client.get_user_subscriptions(user_id)
+            if not user_id:
+                user_data = await client.create_user(
+                    chat_id=chat_id, username=update.effective_user.username
+                )
+                user_id = user_data.get("id")
+                context.user_data["user_id"] = user_id
+                logger.info("user_id_cached", user_id=user_id)
+
+            cached_subs = context.user_data.get("cached_subscriptions")
+            if cached_subs and not is_refresh:
+                subscriptions = cached_subs
+                logger.info("subscriptions_from_cache", count=len(subscriptions))
+            else:
+                subscriptions = await client.get_user_subscriptions(user_id)
+                context.user_data["cached_subscriptions"] = subscriptions
+                logger.info(
+                    "subscriptions_fetched", user_id=user_id, count=len(subscriptions)
+                )
 
         logger.info("subscriptions_fetched", user_id=user_id, count=len(subscriptions))
 
@@ -58,14 +77,14 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         start_idx = page * SUBSCRIPTIONS_PER_PAGE
         end_idx = start_idx + SUBSCRIPTIONS_PER_PAGE
         page_subscriptions = subscriptions[start_idx:end_idx]
-        message = f"📋 *Ваши подписки* ({len(subscriptions)} шт.)\n\n"
+        message = f"📋 Ваши подписки ({len(subscriptions)} шт.)\n\n"
         message += f"Страница {page + 1} из {total_pages}\n\n"
 
         for idx, sub in enumerate(page_subscriptions, start_idx + 1):
             product_name = sub.get("product_name") or "Без названия"
             current_price = sub.get("current_price")
             marketplace = sub.get("marketplace", "").upper()
-            message += f"{idx}. *{product_name}*\n"
+            message += f"{idx}. {product_name}\n"
 
             if marketplace:
                 message += f"   🏪 {marketplace}\n"
@@ -76,6 +95,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 message += "   💰 Цена не определена\n"
             message += "\n"
 
+        message += f"\nОбновлено: {datetime.now(UTC).strftime('%H:%M:%S')}"
         keyboard = get_subscriptions_list_keyboard(
             page_subscriptions,
             page=page,
@@ -86,12 +106,10 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         if update.callback_query:
             await update.callback_query.edit_message_text(
-                message, parse_mode="Markdown", reply_markup=keyboard
+                message, reply_markup=keyboard
             )
         elif update.message:
-            await update.message.reply_text(
-                message, parse_mode="Markdown", reply_markup=keyboard
-            )
+            await update.message.reply_text(message, reply_markup=keyboard)
 
     except Exception as e:
         logger.error("list_command_failed", chat_id=chat_id, error=str(e))

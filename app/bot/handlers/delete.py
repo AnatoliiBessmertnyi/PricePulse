@@ -39,15 +39,16 @@ async def delete_command(
     )
 
     try:
+        user_id = context.user_data.get("user_id")
         async with HTTPClient() as client:
-            # Получаем пользователя
-            user_data = await client.create_user(
-                chat_id=chat_id,
-                username=update.effective_user.username,
-            )
-            user_id = user_data.get("id")
+            if not user_id:
+                user_data = await client.create_user(
+                    chat_id=chat_id, username=update.effective_user.username
+                )
+                user_id = user_data.get("id")
+                context.user_data["user_id"] = user_id
+                logger.info("user_id_cached", user_id=user_id)
 
-            # Получаем список подписок
             subscriptions = await client.get_user_subscriptions(user_id)
 
         logger.info(
@@ -75,12 +76,11 @@ async def delete_command(
         page_subscriptions = subscriptions[start_idx:end_idx]
 
         # Формируем текст
-        message = "❌ *Выберите подписку для удаления*\n\n"
+        message = "❌ Выберите подписку для удаления\n\n"
         message += f"Всего подписок: {len(subscriptions)}\n"
         message += f"Страница {page + 1} из {total_pages}\n\n"
         message += "Нажмите на товар, который хотите удалить:"
 
-        # Клавиатура с кнопками удаления
         keyboard = get_subscriptions_list_keyboard(
             page_subscriptions,
             page=page,
@@ -90,17 +90,11 @@ async def delete_command(
 
         if update.callback_query:
             await update.callback_query.edit_message_text(
-                message,
-                parse_mode="Markdown",
-                reply_markup=keyboard,
+                message, reply_markup=keyboard
             )
 
     except Exception as e:
-        logger.error(
-            "delete_command_failed",
-            chat_id=chat_id,
-            error=str(e),
-        )
+        logger.error("delete_command_failed", chat_id=chat_id, error=str(e))
         if update.callback_query:
             await update.callback_query.edit_message_text(
                 "Произошла ошибка при получении списка подписок."
@@ -108,9 +102,7 @@ async def delete_command(
 
 
 async def confirm_delete(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    subscription_id: int,
+    update: Update, context: ContextTypes.DEFAULT_TYPE, subscription_id: int
 ) -> None:
     """
     Запрос подтверждения удаления подписки
@@ -124,22 +116,21 @@ async def confirm_delete(
         return
 
     chat_id = update.effective_user.id
-
-    logger.info(
-        "confirm_delete",
-        chat_id=chat_id,
-        subscription_id=subscription_id,
-    )
+    logger.info("confirm_delete", chat_id=chat_id, subscription_id=subscription_id)
 
     try:
+        user_id = context.user_data.get("user_id")
         async with HTTPClient() as client:
-            user_data = await client.create_user(
-                chat_id=chat_id, username=update.effective_user.username
-            )
-            user_id = user_data.get("id")
+            if not user_id:
+                user_data = await client.create_user(
+                    chat_id=chat_id, username=update.effective_user.username
+                )
+                user_id = user_data.get("id")
+                context.user_data["user_id"] = user_id
+                logger.info("user_id_cached", user_id=user_id)
+
             subscriptions = await client.get_user_subscriptions(user_id)
 
-        subscription = None
         for sub in subscriptions:
             if sub.get("id") == subscription_id:
                 subscription = sub
@@ -153,18 +144,16 @@ async def confirm_delete(
 
         product_name = subscription.get("product_name") or "Без названия"
         current_price = subscription.get("current_price")
-        message = "⚠️ *Подтверждение удаления*\n\n"
+        message = "⚠️ Подтверждение удаления\n\n"
         message += "Вы действительно хотите удалить подписку?\n\n"
-        message += f"📦 *Товар:* {product_name}\n"
+        message += f"📦 Товар: {product_name}\n"
         if current_price is not None:
             price_value = float(current_price)
-            message += f"💰 *Текущая цена:* {price_value:,.2f} ₽\n"
+            message += f"💰 Текущая цена: {price_value:,.2f} ₽\n"
 
         message += "\nЭто действие нельзя отменить."
         keyboard = get_delete_confirmation_keyboard(subscription_id)
-        await update.callback_query.edit_message_text(
-            message, parse_mode="Markdown", reply_markup=keyboard
-        )
+        await update.callback_query.edit_message_text(message, reply_markup=keyboard)
 
     except Exception as e:
         logger.error(
@@ -180,7 +169,7 @@ async def confirm_delete(
 
 async def execute_delete(
     update: Update,
-    _context: ContextTypes.DEFAULT_TYPE,
+    context: ContextTypes.DEFAULT_TYPE,
     subscription_id: int,
 ) -> None:
     """
@@ -198,11 +187,16 @@ async def execute_delete(
     logger.info("execute_delete", chat_id=chat_id, subscription_id=subscription_id)
 
     try:
+        user_id = context.user_data.get("user_id")
         async with HTTPClient() as client:
-            user_data = await client.create_user(
-                chat_id=chat_id, username=update.effective_user.username
-            )
-            user_id = user_data.get("id")
+            if not user_id:
+                user_data = await client.create_user(
+                    chat_id=chat_id, username=update.effective_user.username
+                )
+                user_id = user_data.get("id")
+                context.user_data["user_id"] = user_id
+                logger.info("user_id_cached", user_id=user_id)
+
             success = await client.delete_subscription(
                 subscription_id=subscription_id, user_id=user_id
             )
