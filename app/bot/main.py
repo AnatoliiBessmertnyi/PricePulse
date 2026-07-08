@@ -18,8 +18,13 @@ from app.bot.handlers.add import add_command, cancel_add, handle_url
 from app.bot.handlers.callbacks import button_handler
 from app.bot.handlers.help import help_command
 from app.bot.handlers.list import list_command
+from app.bot.handlers.set_target import (
+    cancel_set_target,
+    handle_target_price,
+    set_target_command,
+)
 from app.bot.handlers.start import start_command
-from app.bot.states import WAITING_FOR_URL
+from app.bot.states import WAITING_FOR_TARGET_PRICE, WAITING_FOR_URL
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 
@@ -111,11 +116,29 @@ def main():
         persistent=False,
     )
 
+    # ConversationHandler для установки target_price
+    set_target_conversation_handler = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(set_target_command, pattern=r"^set_target_\d+$"),
+        ],
+        states={
+            WAITING_FOR_TARGET_PRICE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_target_price)
+            ],
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_set_target, pattern="^cancel_add$"),
+        ],
+        name="set_target_conversation",
+        persistent=False,
+    )
+
     # Регистрируем handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(add_conversation_handler)
+    application.add_handler(set_target_conversation_handler)
 
     # Callback query handler для всех inline кнопок
     application.add_handler(CallbackQueryHandler(button_handler))

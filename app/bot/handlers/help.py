@@ -7,10 +7,7 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-async def help_command(
-    update: Update,
-    _context: ContextTypes.DEFAULT_TYPE,
-) -> None:
+async def help_command(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Обработчик команды /help
 

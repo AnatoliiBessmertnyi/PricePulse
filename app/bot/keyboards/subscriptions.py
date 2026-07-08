@@ -24,6 +24,7 @@ def get_subscriptions_list_keyboard(
         InlineKeyboardMarkup с кнопками навигации
     """
     keyboard = []
+
     if action == "delete":
         for sub in subscriptions:
             sub_id = sub.get("id")
@@ -35,6 +36,33 @@ def get_subscriptions_list_keyboard(
             callback_data = f"delete_confirm_{sub_id}"
             keyboard.append(
                 [InlineKeyboardButton(button_text, callback_data=callback_data)]
+            )
+    elif action == "view":
+        for sub in subscriptions:
+            sub_id = sub.get("id")
+            product_name = sub.get("product_name") or "Без названия"
+            current_price = sub.get("current_price")
+            target_price = sub.get("target_price")
+
+            if len(product_name) > 25:
+                product_name = product_name[:22] + "..."
+
+            button_text = f"📦 {product_name}"
+            if current_price is not None:
+                price_str = f"{float(current_price):,.0f}₽"
+                button_text += f" | 💰 {price_str}"
+
+            keyboard.append(
+                [InlineKeyboardButton(button_text, callback_data=f"sub_info_{sub_id}")]
+            )
+
+            if target_price is not None:
+                target_str = f"🎯 {float(target_price):,.0f}₽"
+            else:
+                target_str = "🎯 Target"
+
+            keyboard.append(
+                [InlineKeyboardButton(target_str, callback_data=f"set_target_{sub_id}")]
             )
 
     if total_pages > 1:

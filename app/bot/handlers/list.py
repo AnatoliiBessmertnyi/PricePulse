@@ -83,7 +83,9 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         for idx, sub in enumerate(page_subscriptions, start_idx + 1):
             product_name = sub.get("product_name") or "Без названия"
             current_price = sub.get("current_price")
+            target_price = sub.get("target_price")
             marketplace = sub.get("marketplace", "").upper()
+            alert_sent = sub.get("alert_sent", False)
             message += f"{idx}. {product_name}\n"
 
             if marketplace:
@@ -93,6 +95,18 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 message += f"   💰 {price_value:,.2f} ₽\n"
             else:
                 message += "   💰 Цена не определена\n"
+
+            if target_price is not None:
+                target_value = float(target_price)
+                message += f"   🎯 {target_value:,.2f} ₽\n"
+
+                if alert_sent:
+                    message += "   📊 ✅ Уведомление отправлено\n"
+                elif current_price is not None and current_price <= target_price:
+                    message += "   📊 🔔 Цена достигла цели!\n"
+                else:
+                    message += "   📊 ⏳ Мониторинг\n"
+
             message += "\n"
 
         message += f"\nОбновлено: {datetime.now(UTC).strftime('%H:%M:%S')}"

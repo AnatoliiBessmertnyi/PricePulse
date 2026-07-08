@@ -99,8 +99,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 reply_markup=get_main_menu_keyboard(),
             )
 
-        # No-op (для отображения номера страницы)
-        elif callback_data == "noop":
+        # Установка target_price (обрабатывается ConversationHandler)
+        elif callback_data.startswith("set_target_") or callback_data == "noop":
             pass
 
         else:
