@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -57,4 +57,15 @@ class Subscription(Base, TimestampMixin):
         default=False,
         nullable=False,
         comment="Было ли отправлено уведомление о достижении target_price",
+    )
+    last_alert_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Время последнего отправленного уведомления",
+    )
+    cooldown_hours: Mapped[int] = mapped_column(
+        Integer,
+        default=24,
+        nullable=False,
+        comment="Период cooldown в часах между уведомлениями",
     )
