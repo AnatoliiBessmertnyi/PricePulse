@@ -25,7 +25,10 @@ PricePulse — сервис мониторинга цен на маркетпл�
 2. Периодически проверяет цену (интервал настраивается через `PRICE_CHECK_INTERVAL`, по умолчанию 15 минут).
 3. Сохраняет историю изменений.
 4. Кэширует последнюю цену в Redis (TTL 1 час).
-5. Отправляет уведомления при изменении цены.
+5. **Отправляет уведомления при достижении целевой цены (target_price)** с умной логикой:
+   - Автоматический сброс при росте цены выше `target_price + 5%`
+   - Cooldown период (24 часа по умолчанию) между уведомлениями
+   - Визуальный статус в интерфейсе (⏳ Мониторинг / 🔔 Цена достигла цели / ✅ Уведомление отправлено)
 
 ---
 
@@ -35,9 +38,9 @@ PricePulse — сервис мониторинга цен на маркетпл�
           Telegram / CLI Client
                     │
                     ▼
-           Telegram Bot / CLI
-                    │
-                    ▼
+           Telegram Bot / CLI ──────► Cloudflare Worker (прокси)
+                    │                         │
+                    ▼                         ▼
                 FastAPI ──────────► Redis (кэш)
                     │
           ┌─────────┴─────────┐
@@ -52,11 +55,13 @@ PricePulse — сервис мониторинга цен на маркетпл�
                               ▼
                        Celery Worker
                               │
-                              ▼
-                     Playwright Browser
-                              │
-                              ▼
-                         Marketplace
+                    ┌─────────┴─────────┐
+                    │                   │
+                    ▼                   ▼
+           Playwright Browser    NotificationService
+                    │                   │
+                    ▼                   ▼
+              Marketplace         Telegram API
 ```
 
 ---
@@ -72,18 +77,11 @@ PricePulse — сервис мониторинга цен на маркетпл�
 * работа с подписками
 * регистрация пользователей
 * удаление подписок
+* обновление target_price
 * структурированное логирование HTTP запросов через middleware
 
-FastAPI не занимается парсингом.
+FastAPI не занимается парсингом и не отправляет уведомления напрямую.
 
-
----
-
-### 2. Новый подраздел в "FastAPI" — Database с `@lru_cache`
-
-**Добавить после раздела "FastAPI":**
-
-```markdown
 ### Database Connection
 
 FastAPI использует `@lru_cache` для создания singleton engine и session factory:
@@ -134,7 +132,7 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 Хранит:
 
 * пользователей
-* подписки (включая `last_check_at` и `last_success_at`)
+* подписки (включая `last_check_at`, `last_success_at`, `target_price`, `alert_sent`, `last_alert_at`, `cooldown_hours`)
 * историю цен
 * ошибки парсинга
 
@@ -354,17 +352,219 @@ _browser = await _playwright.chromium.launch(
 - При интервале 15 минут один воркер успевает обработать ~20 подписок за цикл
 - Для масштабирования до 2000 подписок потребуется пул из 5-10 браузеров (отложено)
 
+### Интеграция с NotificationService
+
+После успешного парсинга цены задача `parse_price` проверяет, нужно ли отправить уведомление:
+
+```python
+async def _parse_price(subscription_id: int) -> None:
+    # ... парсинг цены ...
+    
+    subscription = await repo.get(subscription_id)
+    if subscription and subscription.current_price and subscription.target_price:
+        subscription_service = SubscriptionService(repo)
+        notification_service = NotificationService(subscription_service)
+        
+        if notification_service.should_send_alert(subscription, subscription.current_price):
+            notification_service.notify_price_drop(subscription)
+            await subscription_service.mark_alert_sent(subscription_id)
+```
+
+Это обеспечивает:
+- Уведомления отправляются только после получения актуальной цены
+- Логика уведомлений инкапсулирована в NotificationService
+- Worker отвечает за оркестрацию, а не за бизнес-логику
+
 ---
 
 ## Telegram Bot
 
-Интерфейс пользователя.
+Основной интерфейс пользователя.
 
-Бот не содержит бизнес-логики.
+Бот реализует **единый виджет UX** — все взаимодействия происходят в одном редактируемом сообщении, без спама новыми сообщениями в чате.
 
-Все операции выполняются через API.
+### Inline Keyboard Navigation
 
-Опциональный сервис — запускается через Docker Compose profile `bot`.
+Вместо текстовых команд используется интерактивная навигация через inline keyboard:
+
+- **Главное меню:** Мои подписки, Добавить подписку, Удалить подписку, Помощь
+- **Список подписок:** пагинация, кнопка "🎯 Установить цену", "🔄 Обновить", "◀️ Назад в меню"
+- **Добавление подписки:** ConversationHandler с ожиданием URL
+- **Удаление подписки:** двухэтапное (выбор → подтверждение)
+
+### Единый виджет UX
+
+Все действия происходят в одном "виджете" (сообщении):
+
+```python
+# Сохраняем ID сообщения для последующего редактирования
+context.user_data["add_request_message_id"] = update.callback_query.message.message_id
+
+# После обработки — редактируем то же сообщение
+await context.bot.edit_message_text(
+    chat_id=chat_id,
+    message_id=request_message_id,
+    text=success_message,
+    reply_markup=get_subscription_created_keyboard(subscription_id),
+)
+```
+
+Это обеспечивает:
+- Чистый чат без спама сообщениями
+- Пользователь не теряет контекст при навигации
+- Плавный UX с редактированием вместо создания новых сообщений
+
+### ConversationHandler
+
+Интерактивные диалоги реализованы через `ConversationHandler`:
+
+```python
+set_target_conversation_handler = ConversationHandler(
+    entry_points=[
+        CallbackQueryHandler(set_target_command, pattern=r"^set_target_select_\d+$"),
+        CallbackQueryHandler(set_target_command, pattern=r"^set_target_new_\d+$"),
+    ],
+    states={
+        WAITING_FOR_TARGET_PRICE: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_target_price)
+        ],
+    },
+    fallbacks=[
+        CallbackQueryHandler(cancel_set_target, pattern=r"^cancel_target$"),
+    ],
+    name="set_target_conversation",
+    persistent=False,
+)
+```
+
+Это позволяет:
+- Управлять состоянием диалога (ожидание URL, ожидание цены)
+- Обрабатывать отмену через fallback
+- Поддерживать несколько entry_points для одного диалога
+
+### Кэширование в context.user_data
+
+Для оптимизации производительности используется кэширование в `context.user_data`:
+
+```python
+# Кэш подписок для пагинации
+context.user_data["cached_subscriptions"] = subscriptions
+
+# Кэш user_id для избежания повторных API запросов
+context.user_data["user_id"] = user_id
+
+# ID сообщения для редактирования
+context.user_data["add_request_message_id"] = message_id
+```
+
+Инвалидация кэша происходит при добавлении/удалении подписки.
+
+### Cloudflare Worker прокси
+
+Для обхода блокировок Telegram API в РФ используется Cloudflare Worker:
+
+```python
+if bot_settings.telegram_api_url:
+    api_url = bot_settings.telegram_api_url.rstrip("/")
+    bot = Bot(
+        token=bot_settings.telegram_bot_token,
+        base_url=api_url + "/bot{token}",
+        base_file_url=api_url + "/file/bot{token}",
+        request=request,
+    )
+```
+
+Worker проксирует запросы к `api.telegram.org` и обходит блокировки.
+
+### Graceful Error Handling
+
+Бот обрабатывает ошибки Telegram API для предотвращения каскадных ошибок:
+
+```python
+# Утилиты для определения типа ошибки
+def is_stale_callback_error(error: Exception) -> bool:
+    error_msg = str(error).lower()
+    return any(
+        phrase in error_msg
+        for phrase in [
+            "query is too old",
+            "message is not modified",
+            "query id is invalid",
+            "response timeout expired",
+        ]
+    )
+
+# При ошибке виджет НЕ ломается
+except Exception as e:
+    if is_stale_callback_error(e):
+        return  # Игнорируем устаревшие callback
+    
+    # Показываем ошибку через "всплывашку"
+    await query.answer("⚠️ Произошла ошибка. Попробуйте ещё раз.", show_alert=True)
+```
+
+Это обеспечивает:
+- Виджет не ломается при временных проблемах
+- Пользователь видит понятные сообщения об ошибках
+- Чистые логи без спама HTML от Cloudflare
+
+### Опциональный сервис
+
+Запускается через Docker Compose profile `bot`.
+
+---
+
+## NotificationService
+
+Сервис умных уведомлений о достижении целевой цены.
+
+### Логика уведомлений
+
+```python
+class NotificationService:
+    def should_send_alert(self, subscription: Subscription, current_price: Decimal) -> bool:
+        # 1. Цена должна быть ниже target_price
+        if subscription.target_price is None or current_price > subscription.target_price:
+            return False
+        
+        # 2. Проверяем что уведомление ещё не отправлено
+        if subscription.alert_sent:
+            # Автоматический сброс если цена поднялась выше threshold (+5%)
+            threshold = subscription.target_price * Decimal(str(1 + ALERT_RESET_BUFFER))
+            if current_price > threshold:
+                subscription.alert_sent = False
+            else:
+                return False
+        
+        # 3. Проверяем cooldown
+        if subscription.last_alert_at:
+            hours_since_last = (now - subscription.last_alert_at).total_seconds() / 3600
+            if hours_since_last < subscription.cooldown_hours:
+                return False
+        
+        return True
+```
+
+### Buffer и Cooldown
+
+- **Buffer (5%):** Автоматический сброс `alert_sent` когда цена поднимается выше `target_price * 1.05`
+- **Cooldown (24 часа):** Минимальный период между повторными уведомлениями
+
+Это предотвращает спам уведомлениями при колебаниях цены вокруг target_price.
+
+### Отправка уведомлений
+
+```python
+def notify_price_drop(self, subscription: Subscription) -> None:
+    text = (
+        f"🔔 Цена снизилась!\n\n"
+        f"📦 {subscription.product_name or 'Товар'}\n"
+        f"💰 Новая цена: {subscription.current_price} ₽\n"
+        f"🎯 Ваша цель: {subscription.target_price} ₽\n\n"
+        f"🔗 {subscription.product_url}"
+    )
+    # Отправка через Telegram API
+```
 
 ---
 
@@ -414,11 +614,11 @@ Ozon использует React Server Components и не отдает `__NEXT_D
 # Слои приложения
 
 ```text
-API
+API / Bot
  ↓
-Middleware
+Middleware / ConversationHandler
  ↓
-Services
+Services (включая NotificationService)
  ↓
 Repositories
  ↓
@@ -483,8 +683,9 @@ app/services/
 
 - **PriceParsingService** — оркестрирует процесс парсинга подписки, обновляет `last_check_at` при любой попытке и `last_success_at` при успехе
 - **PriceService** — сохраняет историю цен, использует `PriceCache` для работы с Redis
-- **SubscriptionService** — управляет подписками (создание, получение, удаление)
+- **SubscriptionService** — управляет подписками (создание, получение, удаление, обновление target_price, отметка об отправке уведомления)
 - **UserService** — управляет пользователями
+- **NotificationService** — умная логика уведомлений (проверка buffer, cooldown, отправка)
 
 ---
 
@@ -502,7 +703,7 @@ app/repositories/
 
 Примеры репозиториев:
 
-- **SubscriptionRepository** — работа с подписками
+- **SubscriptionRepository** — работа с подписками (включая `mark_alert_sent`, `reset_alert_status`)
 - **PriceHistoryRepository** — работа с историей цен
 - **ParseErrorRepository** — работа с ошибками парсинга
 
@@ -562,6 +763,32 @@ app/workers/
 
 ---
 
+## Bot Layer
+
+Содержит:
+
+```text
+app/bot/
+├── handlers/        # Обработчики команд и callback'ов
+├── keyboards/       # Inline keyboard разметка
+├── utils/           # Утилиты (safe_edit, url_parser)
+├── client.py        # HTTP клиент для FastAPI
+├── states.py        # Состояния ConversationHandler
+└── main.py          # Точка входа
+```
+
+Отвечает за:
+
+* взаимодействие с пользователем через Telegram
+* inline keyboard навигацию
+* ConversationHandler для интерактивных диалогов
+* единый виджет UX
+* graceful error handling
+
+Не содержит бизнес-логики — все операции выполняются через API.
+
+---
+
 ## Model Layer
 
 Содержит:
@@ -596,16 +823,25 @@ marketplace
 product_url
 product_name
 current_price
-target_price
+target_price              # Целевая цена для уведомлений
 is_active
-last_check_at        # Время последней попытки парсинга (любой)
-last_success_at      # Время последней успешной проверки
+status                    # IDLE или FAILED
+last_check_at             # Время последней попытки парсинга (любой)
+last_success_at           # Время последней успешной проверки
 created_at
+alert_sent                # Было ли отправлено уведомление о достижении target_price
+last_alert_at             # Время последнего отправленного уведомления
+cooldown_hours            # Период cooldown в часах между уведомлениями (default=24)
 ```
 
 Разделение времени на `last_check_at` и `last_success_at` позволяет пользователю видеть:
 - Когда система последний раз пыталась проверить цену (даже если с ошибкой)
 - Насколько актуальны данные о цене
+
+Поля `alert_sent`, `last_alert_at`, `cooldown_hours` реализуют систему умных уведомлений:
+- `alert_sent` — флаг отправленного уведомления (сбрасывается при росте цены выше threshold)
+- `last_alert_at` — время последнего уведомления (для проверки cooldown)
+- `cooldown_hours` — период между уведомлениями (настраивается, по умолчанию 24 часа)
 
 ---
 
@@ -658,6 +894,10 @@ Celery задачи синхронные, но внутри используют
 * Синхронный Redis-клиент используется в воркере, асинхронный — в FastAPI
 * Оба клиента переиспользуют соединения через singleton-паттерн
 
+### Telegram Bot и синхронные HTTP-клиенты
+
+В Celery задачах (например, `parse_price`) для отправки уведомлений используется **синхронный** `httpx.Client`, а не `httpx.AsyncClient`. Это связано с тем, что Celery задачи выполняются в prefork pool, где asyncio и async HTTP-клиенты вызывают ошибки DNS ([Errno -3]).
+
 ---
 
 # Обработка ошибок
@@ -702,13 +942,58 @@ Celery задачи синхронные, но внутри используют
 **Проблема:**
 Если товар удалён навсегда, система будет спамить маркетплейс запросами каждые N минут. За день это 720 запросов × запуск Playwright = значительная нагрузка на систему и маркетплейс.
 
-**Решение (отложено до Sprint 2):**
+**Решение (отложено):**
 1. Детектировать редирект на страницу поиска (признак удалённого товара)
 2. Счётчик ошибок — после N подряд ошибок деактивировать подписку автоматически
 3. Новый статус `ARCHIVED` или `PRODUCT_UNAVAILABLE`, который исключается из проверки
 
 **Временное решение:**
 Пользователь может вручную удалить подписку через API/CLI/бот.
+
+---
+
+### Graceful Error Handling в Telegram Bot
+
+Бот обрабатывает ошибки Telegram API для предотвращения каскадных ошибок и поломки виджетов:
+
+```python
+# Умный error_handler в main.py
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    error = context.error
+    
+    # Игнорируем устаревшие callback
+    if isinstance(error, BadRequest) and (
+        "query is too old" in str(error).lower()
+        or "message is not modified" in str(error).lower()
+    ):
+        logger.warning("stale_callback_ignored", error=str(error)[:200])
+        return
+    
+    # Игнорируем сетевые ошибки от прокси
+    if isinstance(error, (NetworkError, TimedOut)):
+        logger.warning("network_error_ignored", error=str(error)[:200])
+        return
+    
+    # Логируем только важные ошибки
+    logger.error("telegram_error", exception=str(error)[:500])
+```
+
+В обработчиках команд:
+
+```python
+except Exception as e:
+    if is_stale_callback_error(e):
+        return  # Не трогаем виджет
+    
+    # Показываем ошибку через "всплывашку"
+    await query.answer("⚠️ Произошла ошибка. Попробуйте ещё раз.", show_alert=True)
+```
+
+Это обеспечивает:
+- Виджет не ломается при временных проблемах
+- Нет каскада ошибок (ошибка → попытка отредактировать → снова ошибка → ...)
+- Пользователь видит понятные сообщения об ошибках
+- Чистые логи без спама HTML от Cloudflare
 
 ---
 
@@ -1093,9 +1378,6 @@ Accepted
 
 ---
 
-### 3. Новый ADR-017 — `@lru_cache` для FastAPI database
-
-```markdown
 ## ADR-017
 
 Решение:
@@ -1136,8 +1418,6 @@ Accepted
 
 ---
 
-### 4. Новый ADR-018 — Атомарность в `check_all_subscriptions`
-
 ## ADR-018
 
 Решение:
@@ -1173,7 +1453,201 @@ await session.commit()
 ```
 
 Это гарантирует атомарность: `last_check_at` обновляется только для подписок, для которых действительно созданы задачи.
+
 Статус:
+
+Accepted
+
+---
+
+## ADR-019
+
+Решение:
+
+Использовать Cloudflare Worker как прокси для доступа к Telegram API.
+
+Причина:
+
+Telegram API заблокирован в РФ. Cloudflare Worker проксирует запросы через свои серверы и обходит блокировки.
+
+Преимущества:
+- Бесплатный тариф Cloudflare Workers покрывает потребности проекта
+- Низкая задержка (серверы Cloudflare по всему миру)
+- Автоматическое масштабирование
+- Не требует настройки VPN на сервере
+
+Компромиссы:
+- Зависимость от стороннего сервиса (Cloudflare)
+- Возможны временные 502 ошибки (graceful handling реализован)
+- Ограничения бесплатного тарифа (100k запросов/день)
+
+Альтернативы:
+- VPN на сервере — требует настройки и обслуживания
+- Residential proxy — платное решение
+- Прямой доступ — невозможен в РФ
+
+Статус:
+
+Accepted
+
+---
+
+## ADR-020
+
+Решение:
+
+Использовать единый виджет UX (редактирование сообщений) вместо создания новых сообщений.
+
+Причина:
+
+Создание новых сообщений при каждом действии приводит к:
+- Спаму в чате
+- Потере контекста пользователем
+- Визуальному шуму
+
+Единый виджет обеспечивает:
+- Чистый чат без спама
+- Пользователь не теряет контекст при навигации
+- Плавный UX с редактированием вместо создания новых сообщений
+
+Реализация:
+```python
+# Сохраняем ID сообщения
+context.user_data["request_message_id"] = message.message_id
+
+# Редактируем то же сообщение
+await context.bot.edit_message_text(
+    chat_id=chat_id,
+    message_id=request_message_id,
+    text=new_text,
+    reply_markup=new_keyboard,
+)
+```
+
+Компромиссы:
+- Telegram API ограничивает частоту редактирования сообщений
+- При устаревании callback (Query is too old) требуется graceful handling
+
+Статус:
+
+Accepted
+
+---
+
+## ADR-021
+
+Решение:
+
+Реализовать graceful error handling для ошибок Telegram API.
+
+Причина:
+
+При временных проблемах (устаревший callback, сетевые ошибки от Cloudflare прокси) бот не должен:
+- Ломать виджет (сообщение должно оставаться в последнем успешном состоянии)
+- Спамить пользователя сообщениями об ошибках
+- Создавать каскад ошибок (ошибка → попытка отредактировать → снова ошибка)
+
+Реализация:
+```python
+# Игнорирование устаревших callback
+if is_stale_callback_error(e):
+    return  # Не трогаем виджет
+
+# Показ ошибки через "всплывашку"
+await query.answer("⚠️ Произошла ошибка. Попробуйте ещё раз.", show_alert=True)
+```
+
+Это обеспечивает:
+- Виджет не ломается при временных проблемах
+- Пользователь видит понятные сообщения об ошибках
+- Чистые логи без спама HTML от Cloudflare
+
+Статус:
+
+Accepted
+
+---
+
+## ADR-022
+
+Решение:
+
+Реализовать умную логику уведомлений с buffer (5%) и cooldown (24 часа).
+
+Причина:
+
+Простая проверка `current_price <= target_price` приводит к спаму уведомлениями при колебаниях цены вокруг target_price.
+
+Умная логика обеспечивает:
+- **Buffer (5%):** Автоматический сброс `alert_sent` когда цена поднимается выше `target_price * 1.05`. Это позволяет отправить новое уведомление при следующем падении цены.
+- **Cooldown (24 часа):** Минимальный период между повторными уведомлениями. Это предотвращает спам при частых колебаниях цены.
+
+Пример:
+```
+1. Цена: 100₽, target: 90₽, alert_sent: false
+   ↓ Цена упала до 90₽
+2. → Уведомление отправлено
+   → alert_sent: true, last_alert_at: now
+   ↓ Цена поднялась до 100₽ (> 94.5₽ threshold)
+3. → alert_sent: false (автоматический сброс)
+   ↓ Цена упала до 85₽
+4. → Проверяем cooldown: прошло 2 часа < 24 часа
+   → Не отправляем уведомление
+   ↓ Прошло 25 часов, цена 85₽
+5. → Уведомление отправлено
+```
+
+Константы:
+```python
+ALERT_RESET_BUFFER = 0.05  # 5% buffer для автоматического сброса
+DEFAULT_COOLDOWN_HOURS = 24  # Cooldown между уведомлениями
+```
+
+Статус:
+
+Accepted
+
+---
+
+## ADR-023
+
+Решение:
+
+Использовать ConversationHandler для интерактивных диалогов в Telegram Bot.
+
+Причина:
+
+Текстовые команды (например, `/set_target <id> <price>`) неудобны для пользователя. ConversationHandler позволяет:
+- Управлять состоянием диалога (ожидание URL, ожидание цены)
+- Обрабатывать отмену через fallback
+- Поддерживать несколько entry_points для одного диалога
+- Интегрироваться с inline keyboard навигацией
+
+Пример:
+```python
+set_target_conversation_handler = ConversationHandler(
+    entry_points=[
+        CallbackQueryHandler(set_target_command, pattern=r"^set_target_select_\d+$"),
+        CallbackQueryHandler(set_target_command, pattern=r"^set_target_new_\d+$"),
+    ],
+    states={
+        WAITING_FOR_TARGET_PRICE: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_target_price)
+        ],
+    },
+    fallbacks=[
+        CallbackQueryHandler(cancel_set_target, pattern=r"^cancel_target$"),
+    ],
+)
+```
+
+Это обеспечивает:
+- Интуитивный UX для пользователя
+- Чёткое управление состоянием диалога
+- Возможность отмены на любом этапе
+
+Статус:
+
 Accepted
 
 ---
@@ -1182,6 +1656,9 @@ Accepted
 
 Список решений, которые потребуется принять позже:
 
+* Redis кэширование на уровне API (снижение нагрузки на БД)
+* Настройка `cooldown_hours` для каждой подписки (пользовательский выбор)
+* Покупка стабильного прокси для Telegram API (замена Cloudflare Worker)
 * хранение графиков цен;
 * пул браузеров для параллельного парсинга;
 * residential proxy для масштабирования;
@@ -1189,7 +1666,6 @@ Accepted
 * Grafana;
 * Kubernetes;
 * CI/CD;
-* уведомления об изменении цены через Telegram;
 * авторизация через Telegram Login Widget;
 * поддержка Wildberries и Яндекс.Маркет.
 
@@ -1208,6 +1684,7 @@ Accepted
 - FastAPI — принимает запросы и управляет сценариями.
 - Celery Worker — выполняет фоновые задачи.
 - Parser — получает данные с маркетплейсов.
+- NotificationService — умная логика уведомлений.
 - Telegram Bot / CLI Client — взаимодействуют с пользователем.
 
 ---
@@ -1234,7 +1711,8 @@ Accepted
 
 - остановка Telegram Bot не влияет на парсинг;
 - недоступность Parser не останавливает FastAPI;
-- перезапуск Worker не влияет на API.
+- перезапуск Worker не влияет на API;
+- временные проблемы с Cloudflare прокси не ломают виджет (graceful handling).
 
 ---
 
@@ -1255,3 +1733,5 @@ RabbitMQ используется только для передачи сооб�
 После перезапуска любой сервис должен полностью восстановить работу, используя PostgreSQL и RabbitMQ.
 
 Это позволяет горизонтально масштабировать систему без изменения бизнес-логики.
+
+Исключение: `context.user_data` в Telegram Bot хранит состояние диалога (кэш подписок, ID сообщений), но это состояние временное и восстанавливается при необходимости.

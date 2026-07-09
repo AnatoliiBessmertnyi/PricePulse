@@ -53,3 +53,7 @@ class SubscriptionService:
 
         await self._subscription_repository.session.commit()
         return subscription
+
+    async def mark_alert_sent(self, subscription_id: int) -> None:
+        """Отметить что уведомление отправлено."""
+        await self._subscription_repository.mark_alert_sent(subscription_id)

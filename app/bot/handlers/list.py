@@ -5,7 +5,10 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.bot.client import HTTPClient
-from app.bot.keyboards.subscriptions import get_subscriptions_list_keyboard
+from app.bot.keyboards.subscriptions import (
+    get_empty_subscriptions_keyboard,
+    get_subscriptions_list_keyboard,
+)
 from app.bot.utils.safe_edit import is_stale_callback_error
 from app.core.logging import get_logger
 
@@ -64,10 +67,13 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 "📋 У вас пока нет подписок.\n\n"
                 'Нажмите "➕ Добавить подписку", чтобы добавить подписку на товар.'
             )
+            keyboard = get_empty_subscriptions_keyboard()
             if update.callback_query:
-                await update.callback_query.edit_message_text(message)
+                await update.callback_query.edit_message_text(
+                    message, reply_markup=keyboard
+                )
             elif update.message:
-                await update.message.reply_text(message)
+                await update.message.reply_text(message, reply_markup=keyboard)
             return
 
         total_pages = (
