@@ -59,12 +59,10 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     "subscriptions_fetched", user_id=user_id, count=len(subscriptions)
                 )
 
-        logger.info("subscriptions_fetched", user_id=user_id, count=len(subscriptions))
-
         if not subscriptions:
             message = (
                 "📋 У вас пока нет подписок.\n\n"
-                'Нажмите "➕ Добавить товар", чтобы добавить подписку на товар.'
+                'Нажмите "➕ Добавить подписку", чтобы добавить подписку на товар.'
             )
             if update.callback_query:
                 await update.callback_query.edit_message_text(message)
