@@ -2,6 +2,7 @@ import signal
 import sys
 
 from telegram import Bot, Update
+from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -31,15 +32,35 @@ from app.core.logging import get_logger, setup_logging
 logger = get_logger(__name__)
 
 
-async def error_handler(
-    update: object,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> None:
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Глобальный обработчик ошибок"""
+    error = context.error
+    error_msg = str(error)
+
+    if isinstance(error, BadRequest) and (
+        "query is too old" in str(error).lower()
+        or "message is not modified" in str(error).lower()
+        or "query id is invalid" in str(error).lower()
+    ):
+        logger.warning(
+            "stale_callback_ignored",
+            error_type=type(error).__name__,
+            error=error_msg[:200],
+        )
+        return
+
+    if isinstance(error, (NetworkError, TimedOut)):
+        logger.warning(
+            "network_error_ignored",
+            error_type=type(error).__name__,
+            error=error_msg[:200],
+        )
+        return
+
     logger.error(
         "telegram_error",
-        exception=str(context.error),
-        error_type=type(context.error).__name__,
+        exception=error_msg[:500],
+        error_type=type(error).__name__,
         update=update,
     )
 
@@ -49,10 +70,7 @@ async def error_handler(
                 "Произошла непредвиденная ошибка. Попробуйте позже."
             )
         except Exception as send_error:
-            logger.error(
-                "error_handler_send_failed",
-                error=str(send_error),
-            )
+            logger.error("error_handler_send_failed", error=str(send_error)[:200])
 
 
 def main():
@@ -66,19 +84,14 @@ def main():
     logger.info("starting_bot")
 
     if bot_settings.telegram_api_url:
-        # Используем Cloudflare Worker как кастомный Telegram API URL
         logger.info("using_custom_api_url", url=bot_settings.telegram_api_url)
         api_url = bot_settings.telegram_api_url.rstrip("/")
-
-        # Создаём HTTPXRequest с таймаутами
         request = HTTPXRequest(
             connect_timeout=30.0,
             read_timeout=30.0,
             write_timeout=30.0,
             pool_timeout=30.0,
         )
-
-        # Создаём Bot объект с плейсхолдером {token}
         bot = Bot(
             token=bot_settings.telegram_bot_token,
             base_url=api_url + "/bot{token}",
@@ -87,7 +100,6 @@ def main():
         )
         application = Application.builder().bot(bot).build()
     else:
-        # Стандартный режим без кастомного API URL
         application = (
             Application.builder()
             .token(bot_settings.telegram_bot_token)
@@ -98,7 +110,6 @@ def main():
             .build()
         )
 
-    # ConversationHandler для добавления подписки
     add_conversation_handler = ConversationHandler(
         entry_points=[
             CommandHandler("add", add_command),
@@ -116,10 +127,11 @@ def main():
         persistent=False,
     )
 
-    # ConversationHandler для установки target_price
     set_target_conversation_handler = ConversationHandler(
         entry_points=[
-            CallbackQueryHandler(set_target_command, pattern=r"^set_target_\d+$"),
+            CallbackQueryHandler(
+                set_target_command, pattern=r"^set_target_select_\d+$"
+            ),
         ],
         states={
             WAITING_FOR_TARGET_PRICE: [
@@ -127,22 +139,18 @@ def main():
             ],
         },
         fallbacks=[
-            CallbackQueryHandler(cancel_set_target, pattern="^cancel_add$"),
+            CallbackQueryHandler(cancel_set_target, pattern=r"^cancel_target$"),
         ],
         name="set_target_conversation",
         persistent=False,
     )
 
-    # Регистрируем handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("list", list_command))
     application.add_handler(add_conversation_handler)
     application.add_handler(set_target_conversation_handler)
-
-    # Callback query handler для всех inline кнопок
     application.add_handler(CallbackQueryHandler(button_handler))
-
     application.add_error_handler(error_handler)
 
     def shutdown_handler(signum, frame):
@@ -152,7 +160,6 @@ def main():
 
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
-
     logger.info("bot_started")
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,

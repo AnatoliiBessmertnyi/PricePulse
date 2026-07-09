@@ -1,3 +1,4 @@
+import contextlib
 from datetime import UTC, datetime
 
 from telegram import Update
@@ -5,6 +6,7 @@ from telegram.ext import ContextTypes
 
 from app.bot.client import HTTPClient
 from app.bot.keyboards.subscriptions import get_subscriptions_list_keyboard
+from app.bot.utils.safe_edit import is_stale_callback_error
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -127,10 +129,12 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     except Exception as e:
         logger.error("list_command_failed", chat_id=chat_id, error=str(e))
-        error_message = (
-            "Произошла ошибка при получении списка подписок. Попробуйте позже."
-        )
+
+        if is_stale_callback_error(e):
+            return
+
         if update.callback_query:
-            await update.callback_query.edit_message_text(error_message)
-        elif update.message:
-            await update.message.reply_text(error_message)
+            with contextlib.suppress(Exception):
+                await update.callback_query.answer(
+                    "⚠️ Произошла ошибка. Попробуйте ещё раз.", show_alert=True
+                )
