@@ -60,7 +60,7 @@ async def delete_command(
         if not subscriptions:
             message = (
                 "❌ У вас нет подписок для удаления.\n\n"
-                'Нажмите "➕ Добавить товар", чтобы добавить подписку.'
+                'Нажмите "➕ Добавить подписку", чтобы добавить подписку.'
             )
             if update.callback_query:
                 await update.callback_query.edit_message_text(message)
