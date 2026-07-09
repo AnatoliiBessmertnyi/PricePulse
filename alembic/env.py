@@ -5,15 +5,14 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import settings
 from app.models.base import Base
-
-# импорт моделей для autogenerate
+from app.models.parse_error import ParseError  # noqa: F401
+from app.models.price_history import PriceHistory  # noqa: F401
+from app.models.subscription import Subscription  # noqa: F401
+from app.models.user import User  # noqa: F401
 
 config = context.config
 
-config.set_main_option(
-    "sqlalchemy.url",
-    settings.sync_postgres_url,
-)
+config.set_main_option("sqlalchemy.url", settings.sync_postgres_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -45,9 +44,7 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            compare_type=True,
+            connection=connection, target_metadata=target_metadata, compare_type=True
         )
 
         with context.begin_transaction():

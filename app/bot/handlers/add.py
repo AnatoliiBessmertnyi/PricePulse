@@ -1,12 +1,16 @@
+import contextlib
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.bot.client import HTTPClient
 from app.bot.keyboards.main_menu import (
-    get_back_to_main_keyboard,
     get_main_menu_keyboard,
 )
-from app.bot.keyboards.subscriptions import get_cancel_keyboard
+from app.bot.keyboards.subscriptions import (
+    get_cancel_keyboard,
+    get_subscription_created_keyboard,
+)
 from app.bot.states import WAITING_FOR_URL
 from app.bot.utils.url_parser import clean_and_validate_url
 from app.core.logging import get_logger
@@ -14,10 +18,7 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-async def add_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> int:
+async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
     Обработчик команды /add или callback "menu_add"
 
@@ -42,26 +43,25 @@ async def add_command(
         "Отправьте ссылку на товар с Ozon.\n\n"
         "💡 Можно отправить:\n"
         "• Просто ссылку: https://ozon.ru/product/...\n"
-        '• Текст с ссылкой: "Смотри что я нашел! https://ozon.ru/..."\n'
         "• Поделиться из приложения Ozon\n\n"
         "Для отмены нажмите кнопку ниже:"
     )
 
     if update.callback_query:
         await update.callback_query.edit_message_text(
-            message,
-            reply_markup=get_cancel_keyboard(),
+            message, reply_markup=get_cancel_keyboard()
+        )
+        context.user_data["add_request_message_id"] = (
+            update.callback_query.message.message_id
         )
     elif update.message:
         await update.message.reply_text(message, reply_markup=get_cancel_keyboard())
+        context.user_data["add_request_message_id"] = update.message.message_id
 
     return WAITING_FOR_URL
 
 
-async def handle_url(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> int:
+async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
     Обработчик получения URL от пользователя
 
@@ -123,22 +123,41 @@ async def handle_url(
         )
         context.user_data["cached_subscriptions"] = None
         logger.info("subscriptions_cache_invalidated")
-        response = "✅ Подписка успешно добавлена!\n\n"
+        with contextlib.suppress(Exception):
+            await update.message.delete()
 
+        success_message = "✅ Подписка успешно добавлена!\n\n"
         if product_name:
-            response += f"📦 Товар: {product_name}\n"
-        response += f"🔗 Ссылка: {url}\n"
+            success_message += f"📦 Товар: {product_name}\n"
+        else:
+            success_message += "📦 Товар: обработка данных...\n"
+
+        success_message += f"🔗 Ссылка: {url}\n"
         if current_price is not None:
-            response += f"💰 Цена: {current_price} ₽\n"
-        response += (
+            success_message += f"💰 Цена: {current_price} ₽\n"
+        else:
+            success_message += "💰 Цена: будет определена через несколько секунд\n"
+
+        success_message += (
             "\n💡 Система будет проверять цену каждые 15 минут "
             "и уведомит вас при снижении."
         )
+        request_message_id = context.user_data.get("add_request_message_id")
+        context.user_data["new_subscription_id"] = subscription_id
+        if request_message_id:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=request_message_id,
+                text=success_message,
+                reply_markup=get_subscription_created_keyboard(subscription_id),
+            )
+        else:
+            await update.message.reply_text(
+                success_message,
+                reply_markup=get_subscription_created_keyboard(subscription_id),
+            )
 
-        await update.message.reply_text(
-            response, reply_markup=get_back_to_main_keyboard()
-        )
-
+        context.user_data.pop("add_request_message_id", None)
         return -1
 
     except Exception as e:
@@ -174,12 +193,18 @@ async def handle_url(
 
 
 async def cancel_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """
-    Отмена добавления подписки
+    """Отмена добавления подписки. Возвращает пользователя в главное меню."""
+    chat_id = update.effective_user.id if update.effective_user else None
+    request_message_id = context.user_data.get("add_request_message_id")
 
-    Возвращает пользователя в главное меню.
-    """
-    if update.callback_query:
+    if request_message_id and chat_id:
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=request_message_id,
+            text="🏠 Главное меню\n\nВыберите действие:",
+            reply_markup=get_main_menu_keyboard(),
+        )
+    elif update.callback_query:
         await update.callback_query.edit_message_text(
             "🏠 Главное меню\n\nВыберите действие:",
             reply_markup=get_main_menu_keyboard(),
@@ -190,8 +215,7 @@ async def cancel_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             reply_markup=get_main_menu_keyboard(),
         )
 
-    logger.info(
-        "cancel_add",
-        chat_id=update.effective_user.id if update.effective_user else None,
-    )
+    context.user_data.pop("add_request_message_id", None)
+    context.user_data.pop("new_subscription_id", None)
+    logger.info("cancel_add", chat_id=chat_id)
     return -1

@@ -14,7 +14,7 @@ def get_subscriptions_list_keyboard(
     Создать клавиатуру для списка подписок с пагинацией
 
     Args:
-        subscriptions: Список подписок на теку странице
+        subscriptions: Список подписок на текущей странице
         page: Текущая страница (0-indexed)
         total_pages: Общее количество страниц
         action: Тип действия ("view" для просмотра, "delete" для удаления)
@@ -24,6 +24,7 @@ def get_subscriptions_list_keyboard(
         InlineKeyboardMarkup с кнопками навигации
     """
     keyboard = []
+
     if action == "delete":
         for sub in subscriptions:
             sub_id = sub.get("id")
@@ -36,6 +37,14 @@ def get_subscriptions_list_keyboard(
             keyboard.append(
                 [InlineKeyboardButton(button_text, callback_data=callback_data)]
             )
+    elif action == "view":
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "🎯 Установить цену", callback_data="set_target_menu"
+                )
+            ]
+        )
 
     if total_pages > 1:
         pagination_row = []
@@ -101,4 +110,103 @@ def get_cancel_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardMarkup с кнопкой отмены
     """
     keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_add")]]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_target_subscription_keyboard(
+    subscriptions: list[dict], page: int = 0, total_pages: int = 1
+) -> InlineKeyboardMarkup:
+    """
+    Создать клавиатуру для выбора подписки при установке target_price
+
+    Args:
+        subscriptions: Список подписок на текущей странице
+        page: Текущая страница (0-indexed)
+        total_pages: Общее количество страниц
+
+    Returns:
+        InlineKeyboardMarkup с кнопками подписок
+    """
+    keyboard = []
+    for sub in subscriptions:
+        sub_id = sub.get("id")
+        product_name = sub.get("product_name") or "Без названия"
+        current_price = sub.get("current_price")
+        target_price = sub.get("target_price")
+
+        if len(product_name) > 30:
+            product_name = product_name[:27] + "..."
+
+        button_text = f"📦 {product_name}"
+        if current_price is not None:
+            price_str = f"{float(current_price):,.0f}₽"
+            button_text += f" | 💰 {price_str}"
+        if target_price is not None:
+            target_str = f"🎯 {float(target_price):,.0f}₽"
+            button_text += f" | {target_str}"
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    button_text, callback_data=f"set_target_select_{sub_id}"
+                )
+            ]
+        )
+
+    if total_pages > 1:
+        pagination_row = []
+
+        if page > 0:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    "◀️ Назад", callback_data=f"page_set_target_{page - 1}"
+                )
+            )
+
+        pagination_row.append(
+            InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop")
+        )
+
+        if page < total_pages - 1:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    "Вперёд ▶️", callback_data=f"page_set_target_{page + 1}"
+                )
+            )
+
+        keyboard.append(pagination_row)
+
+    keyboard.append(
+        [InlineKeyboardButton("◀️ Назад к списку", callback_data="menu_list")]
+    )
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_cancel_target_keyboard() -> InlineKeyboardMarkup:
+    """
+    Создать клавиатуру с кнопкой отмены для установки target_price
+
+    Returns:
+        InlineKeyboardMarkup с кнопкой отмены
+    """
+    keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_target")]]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_subscription_created_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
+    """
+    Клавиатура после успешного создания подписки.
+
+    Предлагает установить целевую цену или вернуться в главное меню.
+    """
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🎯 Установить целевую цену",
+                callback_data=f"set_target_new_{subscription_id}",
+            )
+        ],
+        [InlineKeyboardButton("🏠 В главное меню", callback_data="back_main")],
+    ]
     return InlineKeyboardMarkup(keyboard)

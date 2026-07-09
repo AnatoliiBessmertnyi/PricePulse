@@ -8,13 +8,12 @@ from app.bot.handlers.add import add_command
 from app.bot.handlers.delete import confirm_delete, delete_command, execute_delete
 from app.bot.handlers.help import help_command
 from app.bot.handlers.list import list_command
+from app.bot.handlers.set_target import set_target_menu
 from app.bot.keyboards.main_menu import get_main_menu_keyboard
+from app.bot.utils.safe_edit import is_stale_callback_error
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
-
-# Количество подписок на странице для пагинации
-SUBSCRIPTIONS_PER_PAGE = 5
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -35,6 +34,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         # Главное меню
         if callback_data == "back_main":
+            context.user_data.pop("new_subscription_id", None)
             await query.edit_message_text(
                 "🏠 Главное меню\n\nВыберите действие:",
                 reply_markup=get_main_menu_keyboard(),
@@ -45,7 +45,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             context.user_data["list_page"] = 0
             await list_command(update, context)
 
-        # Меню - Добавить товар
+        # Меню - Добавить подписку
         elif callback_data == "menu_add":
             await add_command(update, context)
 
@@ -99,8 +99,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 reply_markup=get_main_menu_keyboard(),
             )
 
-        # No-op (для отображения номера страницы)
-        elif callback_data == "noop":
+        # Меню установки target_price
+        elif callback_data == "set_target_menu":
+            context.user_data["set_target_page"] = 0
+            await set_target_menu(update, context)
+
+        # Пагинация списка выбора подписки для target
+        elif callback_data.startswith("page_set_target_"):
+            page = int(callback_data.split("_")[-1])
+            context.user_data["set_target_page"] = page
+            await set_target_menu(update, context)
+
+        # Отмена установки target_price
+        elif callback_data == "cancel_target":
+            await set_target_menu(update, context)
+
+        # Установка target_price (обрабатывается ConversationHandler)
+        elif (
+            callback_data.startswith("set_target_select_")
+            or callback_data.startswith("set_target_new_")
+            or callback_data == "noop"
+        ):
             pass
 
         else:
@@ -109,9 +128,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     except Exception as e:
         logger.error(
-            "callback_handler_failed",
-            callback_data=callback_data,
-            error=str(e),
+            "callback_handler_failed", callback_data=callback_data, error=str(e)
         )
+        if is_stale_callback_error(e):
+            return
+
         with contextlib.suppress(Exception):
-            await query.edit_message_text("Произошла ошибка. Попробуйте позже.")
+            await query.answer(
+                "⚠️ Произошла ошибка. Попробуйте ещё раз.", show_alert=True
+            )

@@ -91,3 +91,25 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             .where(Subscription.id == subscription_id)
             .values(alert_sent=False)
         )
+
+    async def mark_alert_sent(self, subscription_id: int) -> None:
+        """Отметить что уведомление отправлено."""
+        await self.session.execute(
+            update(Subscription)
+            .where(Subscription.id == subscription_id)
+            .values(
+                alert_sent=True,
+                last_alert_at=datetime.now(UTC),
+            )
+        )
+
+    async def reset_alert_status(self, subscription_id: int) -> None:
+        """Сбросить статус уведомления (alert_sent и last_alert_at)."""
+        await self.session.execute(
+            update(Subscription)
+            .where(Subscription.id == subscription_id)
+            .values(
+                alert_sent=False,
+                last_alert_at=None,
+            )
+        )

@@ -7,10 +7,7 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-async def help_command(
-    update: Update,
-    _context: ContextTypes.DEFAULT_TYPE,
-) -> None:
+async def help_command(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Обработчик команды /help
 
@@ -27,7 +24,7 @@ async def help_command(
         "/help — Показать эту справку\n\n"
         "🎯 Как пользоваться:\n\n"
         "1️⃣ Добавить подписку:\n"
-        '   • Нажмите "➕ Добавить товар"\n'
+        '   • Нажмите "➕ Добавить подписку"\n'
         "   • Отправьте ссылку на товар с Ozon\n"
         "   • Можно отправить текст с ссылкой:\n"
         '     "Смотри что я нашел! https://ozon.ru/product/..."\n\n'

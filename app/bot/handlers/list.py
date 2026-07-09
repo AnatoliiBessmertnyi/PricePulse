@@ -1,3 +1,4 @@
+import contextlib
 from datetime import UTC, datetime
 
 from telegram import Update
@@ -5,6 +6,7 @@ from telegram.ext import ContextTypes
 
 from app.bot.client import HTTPClient
 from app.bot.keyboards.subscriptions import get_subscriptions_list_keyboard
+from app.bot.utils.safe_edit import is_stale_callback_error
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -57,12 +59,10 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     "subscriptions_fetched", user_id=user_id, count=len(subscriptions)
                 )
 
-        logger.info("subscriptions_fetched", user_id=user_id, count=len(subscriptions))
-
         if not subscriptions:
             message = (
                 "📋 У вас пока нет подписок.\n\n"
-                'Нажмите "➕ Добавить товар", чтобы добавить подписку на товар.'
+                'Нажмите "➕ Добавить подписку", чтобы добавить подписку на товар.'
             )
             if update.callback_query:
                 await update.callback_query.edit_message_text(message)
@@ -83,7 +83,9 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         for idx, sub in enumerate(page_subscriptions, start_idx + 1):
             product_name = sub.get("product_name") or "Без названия"
             current_price = sub.get("current_price")
+            target_price = sub.get("target_price")
             marketplace = sub.get("marketplace", "").upper()
+            alert_sent = sub.get("alert_sent", False)
             message += f"{idx}. {product_name}\n"
 
             if marketplace:
@@ -93,6 +95,18 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 message += f"   💰 {price_value:,.2f} ₽\n"
             else:
                 message += "   💰 Цена не определена\n"
+
+            if target_price is not None:
+                target_value = float(target_price)
+                message += f"   🎯 {target_value:,.2f} ₽\n"
+
+                if alert_sent:
+                    message += "   📊 ✅ Уведомление отправлено\n"
+                elif current_price is not None and current_price <= target_price:
+                    message += "   📊 🔔 Цена достигла цели!\n"
+                else:
+                    message += "   📊 ⏳ Мониторинг\n"
+
             message += "\n"
 
         message += f"\nОбновлено: {datetime.now(UTC).strftime('%H:%M:%S')}"
@@ -113,10 +127,12 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     except Exception as e:
         logger.error("list_command_failed", chat_id=chat_id, error=str(e))
-        error_message = (
-            "Произошла ошибка при получении списка подписок. Попробуйте позже."
-        )
+
+        if is_stale_callback_error(e):
+            return
+
         if update.callback_query:
-            await update.callback_query.edit_message_text(error_message)
-        elif update.message:
-            await update.message.reply_text(error_message)
+            with contextlib.suppress(Exception):
+                await update.callback_query.answer(
+                    "⚠️ Произошла ошибка. Попробуйте ещё раз.", show_alert=True
+                )
