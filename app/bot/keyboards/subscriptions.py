@@ -192,3 +192,21 @@ def get_cancel_target_keyboard() -> InlineKeyboardMarkup:
     """
     keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_target")]]
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_subscription_created_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
+    """
+    Клавиатура после успешного создания подписки.
+
+    Предлагает установить целевую цену или вернуться в главное меню.
+    """
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🎯 Установить целевую цену",
+                callback_data=f"set_target_new_{subscription_id}",
+            )
+        ],
+        [InlineKeyboardButton("🏠 В главное меню", callback_data="back_main")],
+    ]
+    return InlineKeyboardMarkup(keyboard)

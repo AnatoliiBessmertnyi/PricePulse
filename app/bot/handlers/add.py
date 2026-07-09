@@ -7,7 +7,10 @@ from app.bot.client import HTTPClient
 from app.bot.keyboards.main_menu import (
     get_main_menu_keyboard,
 )
-from app.bot.keyboards.subscriptions import get_cancel_keyboard
+from app.bot.keyboards.subscriptions import (
+    get_cancel_keyboard,
+    get_subscription_created_keyboard,
+)
 from app.bot.states import WAITING_FOR_URL
 from app.bot.utils.url_parser import clean_and_validate_url
 from app.core.logging import get_logger
@@ -15,10 +18,7 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-async def add_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> int:
+async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
     Обработчик команды /add или callback "menu_add"
 
@@ -61,10 +61,7 @@ async def add_command(
     return WAITING_FOR_URL
 
 
-async def handle_url(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> int:
+async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
     Обработчик получения URL от пользователя
 
@@ -132,26 +129,32 @@ async def handle_url(
         success_message = "✅ Подписка успешно добавлена!\n\n"
         if product_name:
             success_message += f"📦 Товар: {product_name}\n"
+        else:
+            success_message += "📦 Товар: обработка данных...\n"
 
         success_message += f"🔗 Ссылка: {url}\n"
         if current_price is not None:
             success_message += f"💰 Цена: {current_price} ₽\n"
+        else:
+            success_message += "💰 Цена: будет определена через несколько секунд\n"
 
         success_message += (
             "\n💡 Система будет проверять цену каждые 15 минут "
             "и уведомит вас при снижении."
         )
         request_message_id = context.user_data.get("add_request_message_id")
+        context.user_data["new_subscription_id"] = subscription_id
         if request_message_id:
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=request_message_id,
                 text=success_message,
-                reply_markup=get_main_menu_keyboard(),
+                reply_markup=get_subscription_created_keyboard(subscription_id),
             )
         else:
             await update.message.reply_text(
-                success_message, reply_markup=get_main_menu_keyboard()
+                success_message,
+                reply_markup=get_subscription_created_keyboard(subscription_id),
             )
 
         context.user_data.pop("add_request_message_id", None)
@@ -213,5 +216,6 @@ async def cancel_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
 
     context.user_data.pop("add_request_message_id", None)
+    context.user_data.pop("new_subscription_id", None)
     logger.info("cancel_add", chat_id=chat_id)
     return -1

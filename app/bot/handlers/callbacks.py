@@ -34,6 +34,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         # Главное меню
         if callback_data == "back_main":
+            context.user_data.pop("new_subscription_id", None)
             await query.edit_message_text(
                 "🏠 Главное меню\n\nВыберите действие:",
                 reply_markup=get_main_menu_keyboard(),
@@ -44,7 +45,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             context.user_data["list_page"] = 0
             await list_command(update, context)
 
-        # Меню - Добавить товар
+        # Меню - Добавить подписку
         elif callback_data == "menu_add":
             await add_command(update, context)
 
@@ -114,7 +115,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await set_target_menu(update, context)
 
         # Установка target_price (обрабатывается ConversationHandler)
-        elif callback_data.startswith("set_target_select_") or callback_data == "noop":
+        elif (
+            callback_data.startswith("set_target_select_")
+            or callback_data.startswith("set_target_new_")
+            or callback_data == "noop"
+        ):
             pass
 
         else:

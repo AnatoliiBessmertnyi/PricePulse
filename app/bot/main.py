@@ -132,6 +132,7 @@ def main():
             CallbackQueryHandler(
                 set_target_command, pattern=r"^set_target_select_\d+$"
             ),
+            CallbackQueryHandler(set_target_command, pattern=r"^set_target_new_\d+$"),
         ],
         states={
             WAITING_FOR_TARGET_PRICE: [

@@ -73,6 +73,7 @@ async def _render_target_menu(
 
 async def set_target_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Показать список подписок для выбора при установке target_price."""
+    context.user_data.pop("new_subscription_id", None)
     if not update.effective_user:
         logger.error("set_target_menu_no_user", update=update)
         if update.callback_query:
@@ -104,7 +105,7 @@ async def set_target_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if not subscriptions:
             message = (
                 "❌ У вас нет подписок.\n\n"
-                'Нажмите "➕ Добавить товар", чтобы добавить подписку.'
+                'Нажмите "➕ Добавить подписку", чтобы добавить подписку.'
             )
             if update.callback_query:
                 await update.callback_query.edit_message_text(
@@ -155,10 +156,7 @@ async def set_target_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 )
 
 
-async def set_target_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> int:
+async def set_target_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
     Обработчик выбора подписки для установки target_price
 
@@ -178,7 +176,7 @@ async def set_target_command(
         return -1
 
     callback_data = query.data
-    if not callback_data.startswith("set_target_select_"):
+    if not callback_data.startswith(("set_target_select_", "set_target_new_")):
         return -1
 
     subscription_id = int(callback_data.split("_")[-1])
@@ -312,7 +310,19 @@ async def handle_target_price(
             await update.message.delete()
 
         request_message_id = context.user_data.get("target_request_message_id")
-        await _render_target_menu(context, chat_id, request_message_id)
+        new_subscription_id = context.user_data.get("new_subscription_id")
+        if new_subscription_id == subscription_id:
+            if request_message_id:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=request_message_id,
+                    text="🏠 Главное меню\n\nВыберите действие:",
+                    reply_markup=get_main_menu_keyboard(),
+                )
+            context.user_data.pop("new_subscription_id", None)
+        else:
+            await _render_target_menu(context, chat_id, request_message_id)
+
         context.user_data.pop("target_request_message_id", None)
         return -1
 
