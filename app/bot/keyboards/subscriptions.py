@@ -210,3 +210,16 @@ def get_subscription_created_keyboard(subscription_id: int) -> InlineKeyboardMar
         [InlineKeyboardButton("🏠 В главное меню", callback_data="back_main")],
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_empty_subscriptions_keyboard() -> InlineKeyboardMarkup:
+    """
+    Клавиатура для пустого списка подписок.
+
+    Предлагает добавить подписку или вернуться в главное меню.
+    """
+    keyboard = [
+        [InlineKeyboardButton("➕ Добавить подписку", callback_data="menu_add")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="back_main")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
