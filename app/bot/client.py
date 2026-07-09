@@ -144,3 +144,15 @@ class HTTPClient:
             return False
         response.raise_for_status()
         return True
+
+    async def update_target_price(
+        self, subscription_id: int, user_id: int, target_price: float
+    ) -> dict:
+        """Обновить target_price подписки"""
+        response = await self._request(
+            "PATCH",
+            f"/api/v1/subscriptions/{subscription_id}/target-price?user_id={user_id}",
+            json={"target_price": target_price},
+        )
+        response.raise_for_status()
+        return response.json()

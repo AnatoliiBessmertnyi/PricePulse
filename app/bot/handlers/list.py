@@ -1,134 +1,144 @@
+import contextlib
+from datetime import UTC, datetime
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.bot.client import HTTPClient
+from app.bot.keyboards.subscriptions import (
+    get_empty_subscriptions_keyboard,
+    get_subscriptions_list_keyboard,
+)
+from app.bot.utils.safe_edit import is_stale_callback_error
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+SUBSCRIPTIONS_PER_PAGE = 5
 
-async def list_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> None:
+
+async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Обработчик команды /list
+    Обработчик команды /list или callback "menu_list"
 
-    Показывает список подписок пользователя.
+    Показывает список подписок пользователя с пагинацией.
     """
     if not update.effective_user:
         logger.error("list_no_user", update=update)
-        await update.message.reply_text(
-            "Ошибка: не удалось получить информацию о пользователе."
-        )
+        if update.callback_query:
+            await update.callback_query.answer("Ошибка: нет пользователя")
+        elif update.message:
+            await update.message.reply_text(
+                "Ошибка: не удалось получить информацию о пользователе."
+            )
         return
 
     chat_id = update.effective_user.id
-
-    logger.info(
-        "list_command",
-        chat_id=chat_id,
-    )
+    page = context.user_data.get("list_page", 0)
+    logger.info("list_command", chat_id=chat_id, page=page)
 
     try:
+        user_id = context.user_data.get("user_id")
+        is_refresh = context.user_data.get("is_refresh", False)
+        context.user_data["is_refresh"] = False
+
         async with HTTPClient() as client:
-            # Сначала получаем пользователя
-            user_data = await client.create_user(
-                chat_id=chat_id,
-                username=update.effective_user.username,
-            )
-            user_id = user_data.get("id")
+            if not user_id:
+                user_data = await client.create_user(
+                    chat_id=chat_id, username=update.effective_user.username
+                )
+                user_id = user_data.get("id")
+                context.user_data["user_id"] = user_id
+                logger.info("user_id_cached", user_id=user_id)
 
-            # Получаем список подписок
-            subscriptions = await client.get_user_subscriptions(user_id)
-
-        logger.info(
-            "subscriptions_fetched",
-            user_id=user_id,
-            count=len(subscriptions),
-        )
+            cached_subs = context.user_data.get("cached_subscriptions")
+            if cached_subs and not is_refresh:
+                subscriptions = cached_subs
+                logger.info("subscriptions_from_cache", count=len(subscriptions))
+            else:
+                subscriptions = await client.get_user_subscriptions(user_id)
+                context.user_data["cached_subscriptions"] = subscriptions
+                logger.info(
+                    "subscriptions_fetched", user_id=user_id, count=len(subscriptions)
+                )
 
         if not subscriptions:
-            await update.message.reply_text(
-                "У вас пока нет подписок.\n\n"
-                "Используйте команду /add <ссылка>, чтобы добавить подписку на товар."
+            message = (
+                "📋 У вас пока нет подписок.\n\n"
+                'Нажмите "➕ Добавить подписку", чтобы добавить подписку на товар.'
             )
+            keyboard = get_empty_subscriptions_keyboard()
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    message, reply_markup=keyboard
+                )
+            elif update.message:
+                await update.message.reply_text(message, reply_markup=keyboard)
             return
 
-        # Формируем список подписок
-        response = f"📋 Ваши подписки ({len(subscriptions)}):\n\n"
+        total_pages = (
+            len(subscriptions) + SUBSCRIPTIONS_PER_PAGE - 1
+        ) // SUBSCRIPTIONS_PER_PAGE
+        page = min(page, total_pages - 1)
+        start_idx = page * SUBSCRIPTIONS_PER_PAGE
+        end_idx = start_idx + SUBSCRIPTIONS_PER_PAGE
+        page_subscriptions = subscriptions[start_idx:end_idx]
+        message = f"📋 Ваши подписки ({len(subscriptions)} шт.)\n\n"
+        message += f"Страница {page + 1} из {total_pages}\n\n"
 
-        for idx, sub in enumerate(subscriptions, 1):
+        for idx, sub in enumerate(page_subscriptions, start_idx + 1):
             product_name = sub.get("product_name") or "Без названия"
-            product_url = sub.get("product_url")
             current_price = sub.get("current_price")
+            target_price = sub.get("target_price")
             marketplace = sub.get("marketplace", "").upper()
-            is_active = sub.get("is_active", True)
+            alert_sent = sub.get("alert_sent", False)
+            message += f"{idx}. {product_name}\n"
 
-            response += f"{idx}. {product_name}\n"
             if marketplace:
-                response += f"   🏪 {marketplace}\n"
+                message += f"   🏪 {marketplace}\n"
             if current_price is not None:
-                # Форматируем цену
                 price_value = float(current_price)
-                response += f"   💰 {price_value:,.2f} ₽\n"
+                message += f"   💰 {price_value:,.2f} ₽\n"
             else:
-                response += "   💰 Цена не определена\n"
-            response += f"   🔗 {product_url}\n"
+                message += "   💰 Цена не определена\n"
 
-            if not is_active:
-                response += "   ⚠️ Неактивна\n"
+            if target_price is not None:
+                target_value = float(target_price)
+                message += f"   🎯 {target_value:,.2f} ₽\n"
 
-            response += "\n"
-
-        # Telegram имеет лимит на длину сообщения (4096 символов)
-        # Разбиваем на несколько сообщений если нужно
-        if len(response) > 4000:
-            chunks = []
-            current_chunk = f"📋 Ваши подписки ({len(subscriptions)}):\n\n"
-
-            for idx, sub in enumerate(subscriptions, 1):
-                product_name = sub.get("product_name") or "Без названия"
-                product_url = sub.get("product_url")
-                current_price = sub.get("current_price")
-                marketplace = sub.get("marketplace", "").upper()
-                is_active = sub.get("is_active", True)
-
-                item = f"{idx}. {product_name}\n"
-                if marketplace:
-                    item += f"   🏪 {marketplace}\n"
-                if current_price is not None:
-                    price_value = float(current_price)
-                    item += f"   💰 {price_value:,.2f} ₽\n"
+                if alert_sent:
+                    message += "   📊 ✅ Уведомление отправлено\n"
+                elif current_price is not None and current_price <= target_price:
+                    message += "   📊 🔔 Цена достигла цели!\n"
                 else:
-                    item += "   💰 Цена не определена\n"
-                item += f"   🔗 {product_url}\n"
+                    message += "   📊 ⏳ Мониторинг\n"
 
-                if not is_active:
-                    item += "   ⚠️ Неактивна\n"
+            message += "\n"
 
-                item += "\n"
+        message += f"\nОбновлено: {datetime.now(UTC).strftime('%H:%M:%S')}"
+        keyboard = get_subscriptions_list_keyboard(
+            page_subscriptions,
+            page=page,
+            total_pages=total_pages,
+            action="view",
+            show_refresh=True,
+        )
 
-                if len(current_chunk) + len(item) > 4000:
-                    chunks.append(current_chunk)
-                    current_chunk = item
-                else:
-                    current_chunk += item
-
-            if current_chunk:
-                chunks.append(current_chunk)
-
-            for chunk in chunks:
-                await update.message.reply_text(chunk)
-        else:
-            await update.message.reply_text(response)
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                message, reply_markup=keyboard
+            )
+        elif update.message:
+            await update.message.reply_text(message, reply_markup=keyboard)
 
     except Exception as e:
-        logger.error(
-            "list_command_failed",
-            chat_id=chat_id,
-            error=str(e),
-        )
-        await update.message.reply_text(
-            "Произошла ошибка при получении списка подписок. Попробуйте позже."
-        )
+        logger.error("list_command_failed", chat_id=chat_id, error=str(e))
+
+        if is_stale_callback_error(e):
+            return
+
+        if update.callback_query:
+            with contextlib.suppress(Exception):
+                await update.callback_query.answer(
+                    "⚠️ Произошла ошибка. Попробуйте ещё раз.", show_alert=True
+                )
