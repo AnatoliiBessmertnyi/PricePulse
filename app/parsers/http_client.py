@@ -1,5 +1,6 @@
 import asyncio
 import random
+import time
 
 from app.core.constants import PAGE_TIMEOUT_MS
 from app.core.logging import get_logger
@@ -37,6 +38,7 @@ class MarketplaceHttpClient:
 
     async def get(self, url: str) -> tuple[str, str]:
         """Получить HTML страницу."""
+        start_time = time.monotonic()
         proxy_url = None
         if self._proxy_service:
             proxy_url = self._proxy_service.get_next_proxy()
@@ -48,35 +50,48 @@ class MarketplaceHttpClient:
         page.set_default_timeout(PAGE_TIMEOUT_MS)
         page.set_default_navigation_timeout(PAGE_TIMEOUT_MS)
 
+        async def handle_route(route):
+            if route.request.resource_type in ["image", "media", "stylesheet", "font"]:
+                await route.abort()
+            else:
+                await route.continue_()
+
+        await page.route("**/*", handle_route)
+
         try:
-            await self._human_delay(0.5, 1.5)
+            await self._human_delay(0.2, 0.5)
             await page.goto(url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT_MS)
-            await self._human_delay(1.0, 2.0)
+            await self._human_delay(0.5, 1.0)
             html = await page.content()
             final_url = page.url
             if proxy_url and self._proxy_service:
                 self._proxy_service.mark_proxy_success(proxy_url)
 
+            duration_ms = round((time.monotonic() - start_time) * 1000, 2)
             logger.info(
                 "http_client_get_success",
                 original_url=url,
                 final_url=final_url,
                 html_length=len(html),
                 proxy=self._get_proxy_log(proxy_url),
+                duration_ms=duration_ms,
             )
             return html, final_url
         except Exception as e:
             if proxy_url and self._proxy_service:
                 self._proxy_service.mark_proxy_failed(proxy_url)
 
+            duration_ms = round((time.monotonic() - start_time) * 1000, 2)
             logger.error(
                 "http_client_get_error",
                 url=url,
                 error=str(e),
                 error_type=type(e).__name__,
                 proxy=self._get_proxy_log(proxy_url),
+                duration_ms=duration_ms,
             )
             raise
         finally:
+            await page.unroute("**/*", handle_route)
             if proxy_url is not None:
                 await page.context.close()
