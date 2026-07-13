@@ -2,22 +2,23 @@ from fastapi import Depends
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import CacheService
 from app.core.database import get_db
 from app.core.redis import get_redis
 from app.repositories.price_history import PriceHistoryRepository
-from app.repositories.subscription import (
-    SubscriptionRepository,
-)
+from app.repositories.subscription import SubscriptionRepository
 from app.repositories.user import UserRepository
 from app.services.price import PriceCache, PriceService
-from app.services.subscription import (
-    SubscriptionService,
-)
+from app.services.subscription import SubscriptionService
 from app.services.user import UserService
 
 
 async def get_redis_client() -> Redis:
     return await get_redis()
+
+
+async def get_cache_service(redis_client: Redis = Depends(get_redis)) -> CacheService:
+    return CacheService(redis=redis_client)
 
 
 def get_user_repository(session: AsyncSession = Depends(get_db)) -> UserRepository:
@@ -44,8 +45,9 @@ def get_user_service(
 
 def get_subscription_service(
     repository: SubscriptionRepository = Depends(get_subscription_repository),
+    cache: CacheService = Depends(get_cache_service),
 ) -> SubscriptionService:
-    return SubscriptionService(repository)
+    return SubscriptionService(subscription_repository=repository, cache=cache)
 
 
 def get_price_service(

@@ -1,13 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.dependencies import get_price_service, get_subscription_service
+from app.api.dependencies import (
+    get_cache_service,
+    get_price_service,
+    get_subscription_service,
+)
 from app.api.schemas.subscription import (
     SubscriptionCreate,
     SubscriptionResponse,
     UpdateTargetPrice,
 )
+from app.core.cache import CacheService
 from app.services.price import PriceService
 from app.services.subscription import SubscriptionService
+from app.workers.tasks.parse_price import parse_price
 
 router = APIRouter(prefix="/api/v1/subscriptions", tags=["subscriptions"])
 
@@ -28,22 +34,36 @@ async def create_subscription(
 
 @router.get("/{user_id}", response_model=list[SubscriptionResponse])
 async def get_user_subscriptions(
-    user_id: int, service: SubscriptionService = Depends(get_subscription_service)
+    user_id: int,
+    service: SubscriptionService = Depends(get_subscription_service),
+    cache: CacheService = Depends(get_cache_service),
 ) -> list[SubscriptionResponse]:
+    cache_key = f"subs:user:{user_id}"
+    cached_data = await cache.get_json(cache_key)
+    if cached_data:
+        return [SubscriptionResponse.model_validate(item) for item in cached_data]
+
     subscriptions = await service.get_user_subscriptions(user_id)
-    return [
-        SubscriptionResponse.model_validate(subscription)
-        for subscription in subscriptions
+    data_to_cache = [
+        SubscriptionResponse.model_validate(sub).model_dump() for sub in subscriptions
     ]
+    await cache.set_json(cache_key, data_to_cache, ttl=30)
+    return [SubscriptionResponse.model_validate(sub) for sub in subscriptions]
 
 
 @router.get("/{subscription_id}/prices", response_model=list[dict])
 async def get_price_history(
-    subscription_id: int, price_service: PriceService = Depends(get_price_service)
+    subscription_id: int,
+    price_service: PriceService = Depends(get_price_service),
+    cache: CacheService = Depends(get_cache_service),
 ) -> list[dict]:
-    """Получить историю цен для подписки"""
+    cache_key = f"prices:history:{subscription_id}"
+    cached_data = await cache.get_json(cache_key)
+    if cached_data:
+        return cached_data
+
     history = await price_service.get_price_history(subscription_id)
-    return [
+    data_to_cache = [
         {
             "id": record.id,
             "subscription_id": record.subscription_id,
@@ -52,6 +72,8 @@ async def get_price_history(
         }
         for record in history
     ]
+    await cache.set_json(cache_key, data_to_cache, ttl=60)
+    return data_to_cache
 
 
 @router.post("/{subscription_id}/parse", status_code=202)
@@ -59,12 +81,9 @@ async def trigger_manual_parsing(
     subscription_id: int,
     subscription_service: SubscriptionService = Depends(get_subscription_service),
 ) -> dict:
-    """Ручной запуск парсинга для подписки"""
     subscription = await subscription_service.get_subscription(subscription_id)
     if not subscription:
         raise HTTPException(status_code=404, detail="Subscription not found")
-
-    from app.workers.tasks.parse_price import parse_price
 
     parse_price.delay(subscription_id)
     return {"status": "parsing_queued", "subscription_id": subscription_id}
@@ -74,17 +93,6 @@ async def trigger_manual_parsing(
 async def get_latest_price(
     subscription_id: int, price_service: PriceService = Depends(get_price_service)
 ) -> dict:
-    """Получить последнюю цену для подписки (из кэша или БД)"""
-    if price_service._redis:
-        cache_key = f"price:latest:{subscription_id}"
-        cached_price = await price_service._redis.get(cache_key)
-        if cached_price:
-            return {
-                "subscription_id": subscription_id,
-                "price": float(cached_price),
-                "source": "cache",
-            }
-
     price = await price_service.get_latest_price(subscription_id)
     if price is None:
         raise HTTPException(status_code=404, detail="Price not found")
@@ -92,7 +100,7 @@ async def get_latest_price(
     return {
         "subscription_id": subscription_id,
         "price": float(price),
-        "source": "database",
+        "source": "service_cache_or_db",
     }
 
 

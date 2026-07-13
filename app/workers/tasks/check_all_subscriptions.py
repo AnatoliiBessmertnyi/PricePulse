@@ -54,7 +54,7 @@ async def _check_all_subscriptions() -> None:
 
             await session.commit()
             logger.info(
-                "check_tasks_created",
+                "check_tasks_dispatched",
                 count=len(successful_ids),
                 total=len(subscriptions),
             )
