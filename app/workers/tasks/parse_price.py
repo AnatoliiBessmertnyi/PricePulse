@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -58,6 +59,8 @@ async def _mark_as_failed(subscription_id: int) -> None:
 async def _parse_price(subscription_id: int) -> None:
     engine = create_worker_engine()
     async_session_factory = create_worker_session_factory(engine)
+    start_time = time.monotonic()
+    logger.info("parse_price_started", subscription_id=subscription_id)
 
     try:
         async with async_session_factory() as session:
@@ -77,6 +80,18 @@ async def _parse_price(subscription_id: int) -> None:
                 ):
                     notification_service.notify_price_drop(subscription)
                     await subscription_service.mark_alert_sent(subscription_id)
+
+            duration_ms = round((time.monotonic() - start_time) * 1000, 2)
+            logger.info(
+                "parse_price_completed",
+                subscription_id=subscription_id,
+                price=(
+                    float(subscription.current_price)
+                    if subscription and subscription.current_price
+                    else None
+                ),
+                duration_ms=duration_ms,
+            )
 
             await repo.mark_as_idle(subscription_id)
             await session.commit()

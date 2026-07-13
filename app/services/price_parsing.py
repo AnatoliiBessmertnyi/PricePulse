@@ -28,7 +28,6 @@ class PriceParsingService:
         self._parse_error_repository = parse_error_repository
 
     async def parse_subscription(self, subscription_id: int) -> None:
-        logger.info("price_parsing_started", subscription_id=subscription_id)
         subscription = await self._subscription_repository.get(subscription_id)
 
         if subscription is None:

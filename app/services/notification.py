@@ -18,12 +18,6 @@ class NotificationService:
         self._subscription_service = subscription_service
         base = settings.telegram_api_url or "https://api.telegram.org"
         self._base_url = base.rstrip("/")
-        logger.info(
-            "notification_service_initialized",
-            telegram_api_url=settings.telegram_api_url,
-            base_url=self._base_url,
-            token_set=bool(self._token),
-        )
 
     def should_send_alert(
         self, subscription: Subscription, current_price: Decimal
