@@ -1,3 +1,5 @@
+import logging
+
 from celery import Celery
 from rich.traceback import install as install_rich_traceback
 
@@ -44,3 +46,12 @@ celery_app.conf.update(
 )
 
 celery_app.autodiscover_tasks(["app.workers.tasks"])
+
+
+class CeleryTaskNoiseFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not ("received" in msg or "succeeded in" in msg)
+
+
+logging.getLogger("celery.app.trace").addFilter(CeleryTaskNoiseFilter())
