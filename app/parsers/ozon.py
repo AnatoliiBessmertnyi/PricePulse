@@ -19,17 +19,21 @@ class OzonParser(BaseParser):
 
     async def parse(self, product_url: str) -> ProductData:
         start_time = time.monotonic()
-        
+
         logger.info("ozon_parse_start", url=product_url)
         html_content, final_url = await self.http_client.get(product_url)
-        
+
         product_name = self._extract_product_name(html_content)
         variant = self._extract_selected_variant(html_content, final_url)
-        
+
         if variant is None:
             fallback_price = self._extract_fallback_price(html_content)
             if fallback_price is not None:
-                logger.info("ozon_using_fallback_price", url=final_url, price=str(fallback_price))
+                logger.info(
+                    "ozon_using_fallback_price",
+                    url=final_url,
+                    price=str(fallback_price),
+                )
                 return ProductData(
                     product_name=product_name,
                     current_price=fallback_price,
@@ -64,9 +68,11 @@ class OzonParser(BaseParser):
             html_content,
             re.DOTALL | re.IGNORECASE,
         )
-        
+
         if not match:
-            title_match = re.search(r'<title>(.*?)</title>', html_content, re.IGNORECASE)
+            title_match = re.search(
+                r"<title>(.*?)</title>", html_content, re.IGNORECASE
+            )
             if title_match:
                 name = title_match.group(1).split("|")[0].split("OZON")[0].strip()
                 if name:
@@ -79,8 +85,8 @@ class OzonParser(BaseParser):
 
         try:
             product_data = json.loads(script_content)
-        except json.JSONDecodeError:
-            raise ValueError("Ozon product schema is not valid JSON")
+        except json.JSONDecodeError as e:
+            raise ValueError("Ozon product schema is not valid JSON") from e
 
         product_name = product_data.get("name")
         if not isinstance(product_name, str):
@@ -99,7 +105,7 @@ class OzonParser(BaseParser):
         pattern = re.compile(
             r'<div[^>]+data-state=(["\'])(.*?)\1[^>]*>', re.DOTALL | re.IGNORECASE
         )
-        
+
         for match in pattern.finditer(html_content):
             state = match.group(2)
             if not state:
@@ -180,7 +186,7 @@ class OzonParser(BaseParser):
             if meta_match:
                 with contextlib.suppress(InvalidOperation):
                     return Decimal(meta_match.group(1).replace(",", "."))
-        
+
         try:
             ld_pattern = re.compile(
                 r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
@@ -196,7 +202,7 @@ class OzonParser(BaseParser):
                     if price:
                         with contextlib.suppress(InvalidOperation):
                             return Decimal(str(price).replace(",", "."))
-        except Exception:
-            pass
-            
+        except Exception as e:
+            logger.warning("ozon_fallback_price_parse_error", error=str(e))
+
         return None
