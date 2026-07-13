@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -28,8 +29,10 @@ async def _check_all_subscriptions() -> None:
     try:
         async with async_session_factory() as session:
             repo = SubscriptionRepository(session)
+            check_time = datetime.now(UTC)
             subscriptions = await repo.get_subscriptions_for_check(
-                price_check_interval=settings.price_check_interval
+                price_check_interval=settings.price_check_interval,
+                current_time=check_time,
             )
             if not subscriptions:
                 logger.info("no_subscriptions_ready_for_check")
@@ -50,11 +53,11 @@ async def _check_all_subscriptions() -> None:
                     )
 
             for sub_id in successful_ids:
-                await repo.mark_last_check_now(sub_id)
+                await repo.mark_last_check_now(sub_id, check_time=check_time)
 
             await session.commit()
             logger.info(
-                "check_tasks_created",
+                "check_tasks_dispatched",
                 count=len(successful_ids),
                 total=len(subscriptions),
             )
