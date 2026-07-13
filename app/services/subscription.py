@@ -1,12 +1,18 @@
 from decimal import Decimal
 
+from app.core.cache import CacheService
 from app.models.subscription import Subscription
 from app.repositories.subscription import SubscriptionRepository
 
 
 class SubscriptionService:
-    def __init__(self, subscription_repository: SubscriptionRepository):
+    def __init__(
+        self,
+        subscription_repository: SubscriptionRepository,
+        cache: CacheService | None = None,
+    ):
         self._subscription_repository = subscription_repository
+        self._cache = cache
 
     async def create_subscription(
         self,
@@ -22,6 +28,9 @@ class SubscriptionService:
             target_price=target_price,
         )
         await self._subscription_repository.session.commit()
+
+        if self._cache:
+            await self._cache.delete(f"subs:user:{user_id}")
         return subscription
 
     async def get_user_subscriptions(self, user_id: int) -> list[Subscription]:
@@ -31,18 +40,19 @@ class SubscriptionService:
         return await self._subscription_repository.get(subscription_id)
 
     async def delete_subscription(self, subscription_id: int, user_id: int) -> bool:
-        """Удалить подписку. Возвращает True если удалена, False если не найдена."""
         deleted = await self._subscription_repository.delete_by_user(
             subscription_id, user_id
         )
         if deleted:
             await self._subscription_repository.session.commit()
+            if self._cache:
+                await self._cache.delete(f"subs:user:{user_id}")
+                await self._cache.delete(f"prices:history:{subscription_id}")
         return deleted
 
     async def update_target_price(
         self, subscription_id: int, user_id: int, target_price: Decimal | None
     ) -> Subscription | None:
-        """Обновить target_price подписки."""
         subscription = await self._subscription_repository.get(subscription_id)
         if not subscription or subscription.user_id != user_id:
             return None
@@ -52,8 +62,10 @@ class SubscriptionService:
             await self._subscription_repository.reset_alert_sent(subscription_id)
 
         await self._subscription_repository.session.commit()
+
+        if self._cache:
+            await self._cache.delete(f"subs:user:{user_id}")
         return subscription
 
     async def mark_alert_sent(self, subscription_id: int) -> None:
-        """Отметить что уведомление отправлено."""
         await self._subscription_repository.mark_alert_sent(subscription_id)

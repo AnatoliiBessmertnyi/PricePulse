@@ -41,10 +41,19 @@ class PriceCache:
 
         return None
 
+    async def delete(self, key: str) -> None:
+        """Удалить ключ из кэша (работает и для sync, и для async)."""
+        if self._redis_async:
+            await self._redis_async.delete(key)
+        elif self._redis_sync:
+            self._redis_sync.delete(key)
+
 
 class PriceService:
     def __init__(
-        self, price_history_repository: PriceHistoryRepository, price_cache: PriceCache
+        self,
+        price_history_repository: PriceHistoryRepository,
+        price_cache: PriceCache,
     ) -> None:
         self._price_history_repository = price_history_repository
         self._price_cache = price_cache
@@ -55,6 +64,9 @@ class PriceService:
         )
         cache_key = f"price:latest:{subscription_id}"
         await self._price_cache.set(cache_key, str(price), REDIS_PRICE_TTL)
+
+        # 🚨 Инвалидируем кэш истории цен при сохранении новой цены
+        await self._price_cache.delete(f"prices:history:{subscription_id}")
 
     async def get_price_history(self, subscription_id: int):
         return await self._price_history_repository.get_by_subscription_id(
