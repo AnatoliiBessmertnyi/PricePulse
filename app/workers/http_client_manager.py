@@ -35,7 +35,7 @@ class ProcessBrowser:
     async def _ensure_browser(self) -> None:
         """Убедиться что браузер запущен."""
         if self._browser is None:
-            logger.info("http_client_launching_browser")
+            logger.debug("http_client_launching_browser")
             self._playwright = await async_playwright().start()
             self._browser = await self._playwright.chromium.launch(
                 headless=True,
@@ -47,7 +47,7 @@ class ProcessBrowser:
                     "--disable-blink-features=AutomationControlled",
                 ],
             )
-            logger.info("http_client_browser_launched")
+            logger.debug("http_client_browser_launched")
 
     async def get_page(self) -> Page:
         """
@@ -57,7 +57,7 @@ class ProcessBrowser:
         Браузер создается при первом вызове и переиспользуется.
         """
         if self._page is not None:
-            logger.info("http_client_reusing_browser")
+            logger.debug("http_client_reusing_browser")
             return self._page
 
         await self._ensure_browser()
@@ -82,7 +82,7 @@ class ProcessBrowser:
         )
 
         self._page = await self._context.new_page()
-        logger.info("http_client_browser_ready")
+        logger.debug("http_client_browser_ready")
         return self._page
 
     async def get_page_with_proxy(self, proxy_url: str | None = None) -> Page:
@@ -118,7 +118,7 @@ class ProcessBrowser:
             """
         )
         page = await context.new_page()
-        logger.info("page_created_with_proxy", proxy_url=proxy_url)
+        logger.debug("page_created_with_proxy", proxy_url=proxy_url)
         return page
 
     async def close(self) -> None:
