@@ -5,7 +5,7 @@ from app.core.config import settings
 from app.core.constants import ERROR_MESSAGE_MAX_LENGTH
 from app.core.logging import get_logger
 from app.models.subscription import Subscription, SubscriptionStatus
-from app.parsers.exceptions import ParserError
+from app.parsers.exceptions import ParserError, ProductDataNotFoundError
 from app.parsers.factory import ParserFactory
 from app.repositories.parse_error import ParseErrorRepository
 from app.repositories.subscription import SubscriptionRepository
@@ -68,6 +68,44 @@ class PriceParsingService:
                 "price_saved", subscription_id=subscription.id, price=str(price)
             )
             return True
+
+        except ProductDataNotFoundError as e:
+            subscription.consecutive_errors += 1
+            error_msg = str(e)
+            if "Товар не найден или удален: " in error_msg:
+                subscription.product_name = error_msg.replace(
+                    "Товар не найден или удален: ", ""
+                ).strip()
+
+            logger.warning(
+                "product_not_found_archiving_progress",
+                subscription_id=subscription_id,
+                errors=subscription.consecutive_errors,
+                max_errors=settings.max_consecutive_errors,
+                error_message=error_msg[:100],
+            )
+
+            if subscription.consecutive_errors >= settings.max_consecutive_errors:
+                subscription.status = SubscriptionStatus.ARCHIVED
+                await self._subscription_repository.session.commit()
+                try:
+                    NotificationService().notify_subscription_archived(subscription)
+                except Exception as notify_err:
+                    logger.error(
+                        "archive_notification_failed",
+                        subscription_id=subscription_id,
+                        error=str(notify_err),
+                    )
+                return False
+
+            await self._parse_error_repository.create(
+                subscription_id=subscription_id,
+                error_type="ProductDataNotFoundError",
+                error_message=error_msg[:ERROR_MESSAGE_MAX_LENGTH],
+            )
+            await self._subscription_repository.session.commit()
+            raise
+
         except Exception as e:
             is_parser_error = isinstance(e, ParserError)
             error_message = (

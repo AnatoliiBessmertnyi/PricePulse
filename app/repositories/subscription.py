@@ -21,7 +21,19 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         return result.unique().scalar_one_or_none()
 
     async def get_by_user_id(self, user_id: int) -> list[Subscription]:
-        stmt = select(Subscription).where(Subscription.user_id == user_id)
+        """
+        Получить список подписок пользователя.
+        Исключает архивные подписки, чтобы они не светились в общем списке.
+        """
+        stmt = (
+            select(Subscription)
+            .where(
+                Subscription.user_id == user_id,
+                Subscription.is_active,
+                Subscription.status != SubscriptionStatus.ARCHIVED,
+            )
+            .order_by(Subscription.created_at.desc())
+        )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

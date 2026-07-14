@@ -3,10 +3,12 @@ import html
 import json
 import re
 import time
+import urllib.parse
 from decimal import Decimal, InvalidOperation
 
 from app.core.logging import get_logger
 from app.parsers.base import BaseParser
+from app.parsers.exceptions import ProductDataNotFoundError
 from app.parsers.http_client import MarketplaceHttpClient
 from app.parsers.schemas import ProductData, VariantData
 
@@ -19,9 +21,23 @@ class OzonParser(BaseParser):
 
     async def parse(self, product_url: str) -> ProductData:
         start_time = time.monotonic()
-
         logger.info("ozon_parse_start", url=product_url)
         html_content, final_url = await self.http_client.get(product_url)
+
+        if "/search/" in final_url:
+            logger.warning(
+                "ozon_redirected_to_search",
+                original_url=product_url,
+                final_url=final_url,
+            )
+            fallback_name = "Товар не найден"
+            match = re.search(r"text=([^&]+)", final_url)
+            if match:
+                fallback_name = urllib.parse.unquote(match.group(1)).replace("+", " ")
+
+            raise ProductDataNotFoundError(
+                f"Товар не найден или удален: {fallback_name}"
+            )
 
         product_name = self._extract_product_name(html_content)
         variant = self._extract_selected_variant(html_content, final_url)
