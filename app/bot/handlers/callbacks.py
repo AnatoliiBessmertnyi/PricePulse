@@ -1,13 +1,14 @@
 import asyncio
 import contextlib
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from app.bot.client import HTTPClient
 from app.bot.handlers.add import add_command
 from app.bot.handlers.delete import confirm_delete, delete_command, execute_delete
 from app.bot.handlers.help import help_command
-from app.bot.handlers.list import list_command
+from app.bot.handlers.list import archived_command, list_command
 from app.bot.handlers.set_target import set_target_menu
 from app.bot.keyboards.main_menu import get_main_menu_keyboard
 from app.bot.utils.safe_edit import is_stale_callback_error
@@ -121,6 +122,46 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             or callback_data == "noop"
         ):
             pass
+
+        elif callback_data == "menu_archived":
+            await archived_command(update, context)
+
+        elif callback_data.startswith("reactivate_confirm_"):
+            subscription_id = int(callback_data.split("_")[-1])
+            await query.edit_message_text(
+                "♻️ Реактивировать эту подписку?\n\n"
+                "Счетчик ошибок будет сброшен, и мониторинг возобновится.",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "✅ Да, реактивировать",
+                                callback_data=f"reactivate_yes_{subscription_id}",
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                "❌ Отмена", callback_data="menu_archived"
+                            )
+                        ],
+                    ]
+                ),
+            )
+
+        elif callback_data.startswith("reactivate_yes_"):
+            subscription_id = int(callback_data.split("_")[-1])
+            user_id = context.user_data.get("user_id")
+
+            async with HTTPClient() as client:
+                success = await client.reactivate_subscription(subscription_id, user_id)
+
+            if success:
+                await query.edit_message_text(
+                    "✅ Подписка успешно реактивирована! Мониторинг возобновлен."
+                )
+                context.user_data["cached_subscriptions"] = None  # Сброс кэша
+            else:
+                await query.edit_message_text("⚠️ Не удалось реактивировать подписку.")
 
         else:
             logger.warning("unknown_callback", callback_data=callback_data)

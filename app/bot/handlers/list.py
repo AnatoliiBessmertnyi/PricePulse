@@ -6,6 +6,8 @@ from telegram.ext import ContextTypes
 
 from app.bot.client import HTTPClient
 from app.bot.keyboards.subscriptions import (
+    get_archived_subscriptions_keyboard,
+    get_empty_archived_keyboard,
     get_empty_subscriptions_keyboard,
     get_subscriptions_list_keyboard,
 )
@@ -142,3 +144,42 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 await update.callback_query.answer(
                     "⚠️ Произошла ошибка. Попробуйте ещё раз.", show_alert=True
                 )
+
+
+async def archived_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает список архивных подписок."""
+    if not update.effective_user:
+        return
+
+    chat_id = update.effective_user.id
+    logger.info("archived_command", chat_id=chat_id)
+
+    try:
+        async with HTTPClient() as client:
+            user_id = context.user_data.get("user_id")
+            if not user_id:
+                user_data = await client.create_user(
+                    chat_id=chat_id, username=update.effective_user.username
+                )
+                user_id = user_data.get("id")
+                context.user_data["user_id"] = user_id
+
+            archived_subs = await client.get_archived_subscriptions(user_id)
+
+            if not archived_subs:
+                message = "🗄 У вас нет архивных подписок. Все ваши подписки активны!"
+                keyboard = get_empty_archived_keyboard()
+            else:
+                message = f"🗄 Архивные подписки ({len(archived_subs)} шт.)\n\n"
+                message += "Нажмите на подписку, чтобы реактивировать её:"
+                keyboard = get_archived_subscriptions_keyboard(archived_subs)
+
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    message, reply_markup=keyboard
+                )
+            elif update.message:
+                await update.message.reply_text(message, reply_markup=keyboard)
+
+    except Exception as e:
+        logger.error("archived_command_failed", chat_id=chat_id, error=str(e))

@@ -223,3 +223,31 @@ def get_empty_subscriptions_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🏠 Главное меню", callback_data="back_main")],
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_archived_subscriptions_keyboard(
+    archived_subs: list[dict],
+) -> InlineKeyboardMarkup:
+    """Клавиатура для списка архивных подписок."""
+    keyboard = []
+    for sub in archived_subs:
+        name = (sub.get("product_name") or "Без названия")[:40]
+        sub_id = sub["id"]
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    f"♻️ {name}", callback_data=f"reactivate_confirm_{sub_id}"
+                )
+            ]
+        )
+
+    keyboard.append(
+        [InlineKeyboardButton("🏠 Назад в меню", callback_data="back_main")]
+    )
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_empty_archived_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("🏠 Назад в меню", callback_data="back_main")]]
+    )

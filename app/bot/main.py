@@ -18,7 +18,6 @@ from app.bot.config import bot_settings
 from app.bot.handlers.add import add_command, cancel_add, handle_url
 from app.bot.handlers.callbacks import button_handler
 from app.bot.handlers.help import help_command
-from app.bot.handlers.list import list_command
 from app.bot.handlers.set_target import (
     cancel_set_target,
     handle_target_price,
@@ -148,13 +147,12 @@ def main():
 
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("list", list_command))
     application.add_handler(add_conversation_handler)
     application.add_handler(set_target_conversation_handler)
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_error_handler(error_handler)
 
-    def shutdown_handler(signum, frame):
+    def shutdown_handler(signum, _frame):
         logger.info("shutdown_signal_received", signum=signum)
         application.stop()
         sys.exit(0)

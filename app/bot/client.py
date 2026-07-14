@@ -156,3 +156,24 @@ class HTTPClient:
         )
         response.raise_for_status()
         return response.json()
+
+    async def get_archived_subscriptions(self, user_id: int) -> list[dict]:
+        """Получить список архивных подписок пользователя."""
+        response = await self._request(
+            "GET", f"/api/v1/subscriptions/{user_id}/archived"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def reactivate_subscription(self, subscription_id: int, user_id: int) -> bool:
+        """Реактивировать архивную подписку."""
+        response = await self._request(
+            "POST",
+            f"/api/v1/subscriptions/{subscription_id}/reactivate",
+            params={"user_id": user_id},
+        )
+        if response.status_code == 404:
+            return False
+
+        response.raise_for_status()
+        return True
