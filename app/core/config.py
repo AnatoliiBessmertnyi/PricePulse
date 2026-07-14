@@ -40,6 +40,9 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    max_consecutive_errors: int = 5
+    price_rise_threshold: float = 0.10
+
     @field_validator("price_check_interval")
     @classmethod
     def validate_price_check_interval(cls, v: int) -> int:
