@@ -75,6 +75,7 @@ def get_subscriptions_list_keyboard(
             InlineKeyboardButton("🔄 Обновить", callback_data="refresh_list")
         )
 
+    nav_row.append(InlineKeyboardButton("🗄 Архивные", callback_data="menu_archived"))
     nav_row.append(InlineKeyboardButton("◀️ Назад в меню", callback_data="back_main"))
     keyboard.append(nav_row)
     return InlineKeyboardMarkup(keyboard)

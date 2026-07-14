@@ -13,13 +13,12 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [
             InlineKeyboardButton("📋 Мои подписки", callback_data="menu_list"),
-            InlineKeyboardButton("🗄 Архивные", callback_data="menu_archived"),
+            InlineKeyboardButton("➕ Добавить подписку", callback_data="menu_add"),
         ],
         [
-            InlineKeyboardButton("➕ Добавить подписку", callback_data="menu_add"),
             InlineKeyboardButton("❌ Удалить подписку", callback_data="menu_delete"),
+            InlineKeyboardButton("ℹ️ Помощь", callback_data="menu_help"),
         ],
-        [InlineKeyboardButton("ℹ️ Помощь", callback_data="menu_help")],
     ]
     return InlineKeyboardMarkup(keyboard)
 

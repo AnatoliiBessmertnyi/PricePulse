@@ -156,10 +156,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 success = await client.reactivate_subscription(subscription_id, user_id)
 
             if success:
-                await query.edit_message_text(
-                    "✅ Подписка успешно реактивирована! Мониторинг возобновлен."
-                )
-                context.user_data["cached_subscriptions"] = None  # Сброс кэша
+                context.user_data["cached_subscriptions"] = None
+                await archived_command(update, context)
             else:
                 await query.edit_message_text("⚠️ Не удалось реактивировать подписку.")
 
