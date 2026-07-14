@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,8 +18,9 @@ if TYPE_CHECKING:
 class SubscriptionStatus(StrEnum):
     """Статусы подписки."""
 
-    IDLE = "idle"  # Ожидает проверки
-    FAILED = "failed"  # Задача завершилась с ошибкой
+    IDLE = "idle"
+    FAILED = "failed"
+    ARCHIVED = "archived"
 
 
 class Subscription(Base, TimestampMixin):
@@ -68,4 +69,24 @@ class Subscription(Base, TimestampMixin):
         default=24,
         nullable=False,
         comment="Период cooldown в часах между уведомлениями",
+    )
+    consecutive_errors: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        comment="Счетчик последовательных ошибок парсинга",
+    )
+    price_rise_alert_sent: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Было ли отправлено уведомление о росте цены (Задача 4)",
+    )
+    __table_args__ = (
+        Index(
+            "ix_subscriptions_active_status_last_check",
+            "is_active",
+            "status",
+            "last_check_at",
+        ),
     )
