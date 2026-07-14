@@ -112,8 +112,41 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         await self.session.execute(
             update(Subscription)
             .where(Subscription.id == subscription_id)
+            .values(alert_sent=False, last_alert_at=None)
+        )
+
+    async def mark_last_check_now_bulk(
+        self, subscription_ids: list[int], check_time: datetime
+    ) -> None:
+        """Массовое обновление last_check_at для оптимизации N+1."""
+        if not subscription_ids:
+            return
+        await self.session.execute(
+            update(Subscription)
+            .where(Subscription.id.in_(subscription_ids))
+            .values(last_check_at=check_time)
+        )
+
+    async def get_archived_by_user_id(self, user_id: int) -> list[Subscription]:
+        """Получить архивные подписки пользователя."""
+        stmt = select(Subscription).where(
+            Subscription.user_id == user_id,
+            Subscription.status == SubscriptionStatus.ARCHIVED,
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def reactivate(self, subscription_id: int, user_id: int) -> bool:
+        """Реактивировать архивную подписку."""
+        result = await self.session.execute(
+            update(Subscription)
+            .where(
+                Subscription.id == subscription_id,
+                Subscription.user_id == user_id,
+                Subscription.status == SubscriptionStatus.ARCHIVED,
+            )
             .values(
-                alert_sent=False,
-                last_alert_at=None,
+                status=SubscriptionStatus.IDLE, is_active=True, consecutive_errors=0
             )
         )
+        return result.rowcount > 0
