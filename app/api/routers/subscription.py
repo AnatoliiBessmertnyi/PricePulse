@@ -131,3 +131,29 @@ async def update_target_price(
         raise HTTPException(status_code=404, detail="Subscription not found")
 
     return SubscriptionResponse.model_validate(subscription)
+
+
+@router.get("/{user_id}/archived", response_model=list[SubscriptionResponse])
+async def get_archived_subscriptions(
+    user_id: int, service: SubscriptionService = Depends(get_subscription_service)
+) -> list[SubscriptionResponse]:
+    """Получить архивные подписки пользователя"""
+    subscriptions = await service.get_archived_subscriptions(user_id)
+    return [SubscriptionResponse.model_validate(item) for item in subscriptions]
+
+
+@router.post("/{subscription_id}/reactivate", response_model=SubscriptionResponse)
+async def reactivate_subscription(
+    subscription_id: int,
+    user_id: int,
+    service: SubscriptionService = Depends(get_subscription_service),
+) -> SubscriptionResponse:
+    """Реактивировать архивную подписку"""
+    success = await service.reactivate_subscription(subscription_id, user_id)
+    if not success:
+        raise HTTPException(
+            status_code=404, detail="Subscription not found or not archived"
+        )
+
+    subscription = await service.get_subscription(subscription_id)
+    return SubscriptionResponse.model_validate(subscription)

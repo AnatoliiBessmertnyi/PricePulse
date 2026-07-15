@@ -20,6 +20,8 @@ class SubscriptionResponse(BaseModel):
     current_price: Decimal | None
     target_price: Decimal | None
     is_active: bool
+    status: str
+    consecutive_errors: int
     last_check_at: datetime | None
     last_success_at: datetime | None
     created_at: datetime

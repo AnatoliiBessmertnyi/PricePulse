@@ -22,14 +22,7 @@ class NotificationService:
     def should_send_alert(
         self, subscription: Subscription, current_price: Decimal
     ) -> bool:
-        """
-        Проверить нужно ли отправлять уведомление.
-
-        Логика:
-        1. Цена должна быть ниже target_price
-        2. Уведомление не должно быть отправлено (или цена поднялась выше threshold)
-        3. Прошло больше cooldown_hours с последнего уведомления
-        """
+        """Проверить нужно ли отправлять уведомление."""
         if (
             subscription.target_price is None
             or current_price > subscription.target_price
@@ -83,4 +76,32 @@ class NotificationService:
                 chat_id=chat_id,
                 error=str(e),
                 error_type=type(e).__name__,
+            )
+
+    def notify_subscription_archived(self, subscription: Subscription) -> None:
+        """Отправить уведомление о том, что подписка архивирована из-за ошибок."""
+        if not self._token:
+            return
+
+        chat_id = subscription.user.chat_id
+        text = (
+            f"🗄 Подписка архивирована\n\n"
+            f"📦 {subscription.product_name or 'Товар'}\n"
+            f"🔗 {subscription.product_url}\n\n"
+            f"Не удалось получить данные о цене несколько раз подряд. "
+            f"Возможно, товар удален или ссылка устарела.\n"
+            f"Вы можете реактивировать её в разделе 'Архивные подписки'."
+        )
+        url = f"{self._base_url}/bot{self._token}/sendMessage"
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.post(url, json={"chat_id": chat_id, "text": text})
+                response.raise_for_status()
+            logger.info("archive_notification_sent", subscription_id=subscription.id)
+        except Exception as e:
+            logger.error(
+                "archive_notification_failed",
+                subscription_id=subscription.id,
+                error=str(e),
             )

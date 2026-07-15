@@ -69,3 +69,17 @@ class SubscriptionService:
 
     async def mark_alert_sent(self, subscription_id: int) -> None:
         await self._subscription_repository.mark_alert_sent(subscription_id)
+
+    async def get_archived_subscriptions(self, user_id: int) -> list[Subscription]:
+        return await self._subscription_repository.get_archived_by_user_id(user_id)
+
+    async def reactivate_subscription(self, subscription_id: int, user_id: int) -> bool:
+        reactivated = await self._subscription_repository.reactivate(
+            subscription_id, user_id
+        )
+        if reactivated:
+            await self._subscription_repository.session.commit()
+            if self._cache:
+                await self._cache.delete(f"subs:user:{user_id}")
+                await self._cache.delete(f"subs:archived:{user_id}")
+        return reactivated

@@ -66,7 +66,14 @@ async def _parse_price(subscription_id: int) -> None:
         async with async_session_factory() as session:
             repo = SubscriptionRepository(session)
             service = await get_price_parsing_service(session)
-            await service.parse_subscription(subscription_id=subscription_id)
+            is_active = await service.parse_subscription(
+                subscription_id=subscription_id
+            )
+            if not is_active:
+                logger.info(
+                    "parse_price_skipped_archived", subscription_id=subscription_id
+                )
+                return
             subscription = await repo.get(subscription_id)
             if (
                 subscription
