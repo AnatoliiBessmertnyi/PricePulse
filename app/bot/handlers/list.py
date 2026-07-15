@@ -12,6 +12,7 @@ from app.bot.keyboards.subscriptions import (
     get_subscriptions_list_keyboard,
 )
 from app.bot.utils.safe_edit import is_stale_callback_error
+from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -99,11 +100,6 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
             # 1. Формируем отображаемое имя
             display_name = raw_name if raw_name else "Товар (данные не получены)"
-
-            # 2. Добавляем визуальные маркеры
-            if consecutive_errors > 0:
-                display_name = f"⚠️ [Проблемы] {display_name}"
-
             message += f"{idx}. {display_name}\n"
 
             if marketplace:
@@ -112,16 +108,20 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             if current_price is not None:
                 message += f"  💰 {float(current_price):,.2f} ₽\n"
             else:
-                message += "   💰 Цена не определена\n"
+                message += "  💰 Цена не определена\n"
 
             if target_price is not None:
                 message += f"  🎯 {float(target_price):,.2f} ₽\n"
 
-            # 3. Статус мониторинга (максимально информативный, с приоритетом проблем)
+            # 2. Статус мониторинга (максимально информативный, с приоритетом проблем)
             if consecutive_errors > 0:
-                message += f"  📊 ⚠️Ошибка получения данных ({consecutive_errors}/3)\n"
+                max_errors = settings.max_consecutive_errors
+                message += (
+                    f"  📊 ⚠️Ошибка получения данных ({consecutive_errors}/"
+                    f"{max_errors})\n"
+                )
             elif alert_sent:
-                message += "   📊 ✅ Уведомление отправлено\n"
+                message += "  📊 ✅ Уведомление отправлено\n"
             elif (
                 target_price is not None
                 and current_price is not None
@@ -133,7 +133,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             else:
                 message += "  📊 ⏳ Мониторинг (без целевой цены)\n"
 
-            # 4. Ссылка на товар
+            # 3. Ссылка на товар
             if product_url:
                 message += f"  🔗 {product_url}\n"
 
