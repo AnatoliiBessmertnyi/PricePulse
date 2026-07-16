@@ -52,6 +52,9 @@ def get_subscriptions_list_keyboard(
                 )
             ]
         )
+        keyboard.append(
+            [InlineKeyboardButton("📊 Графики цен", callback_data="menu_chart")]
+        )
 
     if total_pages > 1:
         pagination_row = []
@@ -83,8 +86,8 @@ def get_subscriptions_list_keyboard(
         )
 
     nav_row.append(InlineKeyboardButton("🗄 Архивные", callback_data="menu_archived"))
-    nav_row.append(InlineKeyboardButton("◀️ Назад в меню", callback_data="back_main"))
     keyboard.append(nav_row)
+    keyboard.append([InlineKeyboardButton("◀️ Назад в меню", callback_data="back_main")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -221,13 +224,10 @@ def get_subscription_created_keyboard(subscription_id: int) -> InlineKeyboardMar
 
 
 def get_empty_subscriptions_keyboard() -> InlineKeyboardMarkup:
-    """
-    Клавиатура для пустого списка подписок.
-
-    Предлагает добавить подписку или вернуться в главное меню.
-    """
+    """Клавиатура для пустого списка активных подписок."""
     keyboard = [
         [InlineKeyboardButton("➕ Добавить подписку", callback_data="menu_add")],
+        [InlineKeyboardButton("🗄 Архивные подписки", callback_data="menu_archived")],
         [InlineKeyboardButton("🏠 Главное меню", callback_data="back_main")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -236,16 +236,19 @@ def get_empty_subscriptions_keyboard() -> InlineKeyboardMarkup:
 def get_archived_subscriptions_keyboard(
     archived_subs: list[dict],
 ) -> InlineKeyboardMarkup:
-    """Клавиатура для списка архивных подписок."""
+    """Клавиатура для списка архивных подписок (с кнопкой графика)."""
     keyboard = []
     for sub in archived_subs:
-        name = (sub.get("product_name") or "Без названия")[:40]
+        name = (sub.get("product_name") or "Без названия")[:25]
         sub_id = sub["id"]
         keyboard.append(
             [
                 InlineKeyboardButton(
+                    "📊 График", callback_data=f"chart_select_{sub_id}"
+                ),
+                InlineKeyboardButton(
                     f"♻️ {name}", callback_data=f"reactivate_confirm_{sub_id}"
-                )
+                ),
             ]
         )
 
@@ -305,4 +308,79 @@ def get_cooldown_subscription_keyboard(
     keyboard.append(
         [InlineKeyboardButton("◀️ Назад к списку", callback_data="menu_list")]
     )
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_chart_subscription_keyboard(
+    subscriptions: list[dict], page: int = 0, total_pages: int = 1
+) -> InlineKeyboardMarkup:
+    """Клавиатура для выбора подписки при просмотре графика."""
+    keyboard = []
+    for sub in subscriptions:
+        sub_id = sub.get("id")
+        product_name = sub.get("product_name") or "Без названия"
+        if len(product_name) > 30:
+            product_name = product_name[:27] + "..."
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    f"📊 {product_name}", callback_data=f"chart_select_{sub_id}"
+                )
+            ]
+        )
+
+    if total_pages > 1:
+        pagination_row = []
+        if page > 0:
+            pagination_row.append(
+                InlineKeyboardButton("◀️", callback_data=f"page_chart_{page - 1}")
+            )
+        pagination_row.append(
+            InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop")
+        )
+        if page < total_pages - 1:
+            pagination_row.append(
+                InlineKeyboardButton("▶️", callback_data=f"page_chart_{page + 1}")
+            )
+        keyboard.append(pagination_row)
+
+    keyboard.append(
+        [InlineKeyboardButton("◀️ Назад к списку", callback_data="menu_list")]
+    )
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_chart_period_keyboard(
+    subscription_id: int, current_period: str
+) -> InlineKeyboardMarkup:
+    """Клавиатура выбора периода под графиком."""
+    btn_7d = "✅ 7 дней" if current_period == "7d" else "7 дней"
+    btn_30d = "✅ 30 дней" if current_period == "30d" else "30 дней"
+    btn_all = "✅ Всё время" if current_period == "all" else "Всё время"
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    btn_7d, callback_data=f"chart_period_{subscription_id}_7d"
+                ),
+                InlineKeyboardButton(
+                    btn_30d, callback_data=f"chart_period_{subscription_id}_30d"
+                ),
+                InlineKeyboardButton(
+                    btn_all, callback_data=f"chart_period_{subscription_id}_all"
+                ),
+            ],
+            [InlineKeyboardButton("◀️ Назад к выбору", callback_data="menu_chart")],
+        ]
+    )
+
+
+def get_empty_delete_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура, когда нечего удалять."""
+    keyboard = [
+        [InlineKeyboardButton("➕ Добавить подписку", callback_data="menu_add")],
+        [InlineKeyboardButton("◀️ Назад в меню", callback_data="back_main")],
+    ]
     return InlineKeyboardMarkup(keyboard)
