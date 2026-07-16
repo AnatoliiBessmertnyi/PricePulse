@@ -115,6 +115,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         elif callback_data == "cancel_target":
             await set_target_menu(update, context)
 
+        # Отмена настройки cooldown (возврат к списку подписок)
+        elif callback_data == "cancel_cooldown":
+            context.user_data.pop("target_cooldown_sub_id", None)
+            context.user_data["list_page"] = 0
+            await list_command(update, context)
+
         # Установка target_price (обрабатывается ConversationHandler)
         elif (
             callback_data.startswith("set_target_select_")
@@ -160,6 +166,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 await archived_command(update, context)
             else:
                 await query.edit_message_text("⚠️ Не удалось реактивировать подписку.")
+
+        elif callback_data.startswith("page_set_cooldown_") or callback_data.startswith(
+            "set_cooldown_select_"
+        ):
+            pass
 
         else:
             logger.warning("unknown_callback", callback_data=callback_data)

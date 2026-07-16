@@ -177,3 +177,15 @@ class HTTPClient:
 
         response.raise_for_status()
         return True
+
+    async def update_subscription_cooldown(
+        self, subscription_id: int, user_id: int, cooldown_hours: int
+    ) -> dict:
+        """Обновить cooldown_hours через API"""
+        response = await self._request(
+            "PATCH",
+            f"/api/v1/subscriptions/{subscription_id}/cooldown?user_id={user_id}",
+            json={"cooldown_hours": cooldown_hours},
+        )
+        response.raise_for_status()
+        return response.json()
