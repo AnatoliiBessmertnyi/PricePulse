@@ -97,8 +97,8 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             marketplace = sub.get("marketplace", "").upper()
             alert_sent = sub.get("alert_sent", False)
             product_url = sub.get("product_url", "")
+            cooldown_hours = sub.get("cooldown_hours", 24)
 
-            # 1. Формируем отображаемое имя
             display_name = raw_name if raw_name else "Товар (данные не получены)"
             message += f"{idx}. {display_name}\n"
 
@@ -113,7 +113,8 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             if target_price is not None:
                 message += f"  🎯 {float(target_price):,.2f} ₽\n"
 
-            # 2. Статус мониторинга (максимально информативный, с приоритетом проблем)
+            message += f"  🔁 Уведомления: каждые {cooldown_hours}ч\n"
+
             if consecutive_errors > 0:
                 max_errors = settings.max_consecutive_errors
                 message += (

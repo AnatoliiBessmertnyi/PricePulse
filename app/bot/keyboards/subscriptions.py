@@ -45,6 +45,13 @@ def get_subscriptions_list_keyboard(
                 )
             ]
         )
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "⏱ Настроить интервал", callback_data="set_cooldown_menu"
+                )
+            ]
+        )
 
     if total_pages > 1:
         pagination_row = []
@@ -252,3 +259,50 @@ def get_empty_archived_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [[InlineKeyboardButton("🏠 Назад в меню", callback_data="back_main")]]
     )
+
+
+def get_cooldown_subscription_keyboard(
+    subscriptions: list[dict], page: int = 0, total_pages: int = 1
+) -> InlineKeyboardMarkup:
+    """Клавиатура для выбора подписки при настройке cooldown."""
+    keyboard = []
+    for sub in subscriptions:
+        sub_id = sub.get("id")
+        product_name = sub.get("product_name") or "Без названия"
+        cooldown = sub.get("cooldown_hours", 24)
+
+        if len(product_name) > 30:
+            product_name = product_name[:27] + "..."
+
+        button_text = f"⏱ {product_name} ({cooldown}ч)"
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    button_text, callback_data=f"set_cooldown_select_{sub_id}"
+                )
+            ]
+        )
+
+    if total_pages > 1:
+        pagination_row = []
+        if page > 0:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    "◀️ Назад", callback_data=f"page_set_cooldown_{page - 1}"
+                )
+            )
+        pagination_row.append(
+            InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop")
+        )
+        if page < total_pages - 1:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    "Вперёд ▶️", callback_data=f"page_set_cooldown_{page + 1}"
+                )
+            )
+        keyboard.append(pagination_row)
+
+    keyboard.append(
+        [InlineKeyboardButton("◀️ Назад к списку", callback_data="menu_list")]
+    )
+    return InlineKeyboardMarkup(keyboard)
