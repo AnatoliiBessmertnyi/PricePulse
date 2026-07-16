@@ -97,10 +97,10 @@ def main():
         logger.info("using_custom_api_url", url=bot_settings.telegram_api_url)
         api_url = bot_settings.telegram_api_url.rstrip("/")
         request = HTTPXRequest(
-            connect_timeout=30.0,
-            read_timeout=30.0,
-            write_timeout=30.0,
-            pool_timeout=30.0,
+            connect_timeout=60.0,
+            read_timeout=60.0,
+            write_timeout=60.0,
+            pool_timeout=60.0,
         )
         bot = Bot(
             token=bot_settings.telegram_bot_token,

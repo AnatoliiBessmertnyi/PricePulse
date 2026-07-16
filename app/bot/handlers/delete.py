@@ -4,6 +4,7 @@ from telegram.ext import ContextTypes
 from app.bot.client import HTTPClient
 from app.bot.keyboards.subscriptions import (
     get_delete_confirmation_keyboard,
+    get_empty_delete_keyboard,
     get_subscriptions_list_keyboard,
 )
 from app.core.logging import get_logger
@@ -58,15 +59,14 @@ async def delete_command(
         )
 
         if not subscriptions:
-            message = (
-                "❌ У вас нет подписок для удаления.\n\n"
-                'Нажмите "➕ Добавить подписку", чтобы добавить подписку.'
-            )
+            message = "❌ У вас нет подписок для удаления.\n\n"
+            keyboard = get_empty_delete_keyboard()
             if update.callback_query:
-                await update.callback_query.edit_message_text(message)
+                await update.callback_query.edit_message_text(
+                    message, reply_markup=keyboard
+                )
             return
 
-        # Пагинация
         total_pages = (
             len(subscriptions) + SUBSCRIPTIONS_PER_PAGE - 1
         ) // SUBSCRIPTIONS_PER_PAGE
