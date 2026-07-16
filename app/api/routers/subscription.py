@@ -8,6 +8,7 @@ from app.api.dependencies import (
 from app.api.schemas.subscription import (
     SubscriptionCreate,
     SubscriptionResponse,
+    UpdateCooldown,
     UpdateTargetPrice,
 )
 from app.core.cache import CacheService
@@ -110,7 +111,7 @@ async def delete_subscription(
     user_id: int,
     service: SubscriptionService = Depends(get_subscription_service),
 ) -> None:
-    """Удалить подписку"""
+    """Удалить подписку."""
     deleted = await service.delete_subscription(subscription_id, user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Subscription not found")
@@ -123,7 +124,7 @@ async def update_target_price(
     data: UpdateTargetPrice,
     service: SubscriptionService = Depends(get_subscription_service),
 ) -> SubscriptionResponse:
-    """Обновить target_price для подписки"""
+    """Обновить target_price для подписки."""
     subscription = await service.update_target_price(
         subscription_id=subscription_id, user_id=user_id, target_price=data.target_price
     )
@@ -137,7 +138,7 @@ async def update_target_price(
 async def get_archived_subscriptions(
     user_id: int, service: SubscriptionService = Depends(get_subscription_service)
 ) -> list[SubscriptionResponse]:
-    """Получить архивные подписки пользователя"""
+    """Получить архивные подписки пользователя."""
     subscriptions = await service.get_archived_subscriptions(user_id)
     return [SubscriptionResponse.model_validate(item) for item in subscriptions]
 
@@ -148,7 +149,7 @@ async def reactivate_subscription(
     user_id: int,
     service: SubscriptionService = Depends(get_subscription_service),
 ) -> SubscriptionResponse:
-    """Реактивировать архивную подписку"""
+    """Реактивировать архивную подписку."""
     success = await service.reactivate_subscription(subscription_id, user_id)
     if not success:
         raise HTTPException(
@@ -156,4 +157,23 @@ async def reactivate_subscription(
         )
 
     subscription = await service.get_subscription(subscription_id)
+    return SubscriptionResponse.model_validate(subscription)
+
+
+@router.patch("/{subscription_id}/cooldown", response_model=SubscriptionResponse)
+async def update_cooldown(
+    subscription_id: int,
+    user_id: int,
+    data: UpdateCooldown,
+    service: SubscriptionService = Depends(get_subscription_service),
+) -> SubscriptionResponse:
+    """Обновить cooldown_hours для подписки."""
+    subscription = await service.update_cooldown(
+        subscription_id=subscription_id,
+        user_id=user_id,
+        cooldown_hours=data.cooldown_hours,
+    )
+    if not subscription:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+
     return SubscriptionResponse.model_validate(subscription)

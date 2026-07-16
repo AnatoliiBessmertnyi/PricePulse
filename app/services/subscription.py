@@ -83,3 +83,17 @@ class SubscriptionService:
                 await self._cache.delete(f"subs:user:{user_id}")
                 await self._cache.delete(f"subs:archived:{user_id}")
         return reactivated
+
+    async def update_cooldown(
+        self, subscription_id: int, user_id: int, cooldown_hours: int
+    ) -> Subscription | None:
+        subscription = await self._subscription_repository.get(subscription_id)
+        if not subscription or subscription.user_id != user_id:
+            return None
+
+        subscription.cooldown_hours = cooldown_hours
+        await self._subscription_repository.session.commit()
+
+        if self._cache:
+            await self._cache.delete(f"subs:user:{user_id}")
+        return subscription
