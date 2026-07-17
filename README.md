@@ -32,25 +32,22 @@ PricePulse — высокопроизводительный сервис мон�
 # Архитектура
 
 ```text
-                Telegram / CLI
+                Telegram / CLI Client
                     │
                     ▼
-           Telegram Bot ──────► Cloudflare Worker (прокси)
-                    │
-                    ▼
+           Telegram Bot / CLI ──────► Cloudflare Worker (прокси)
+                    │                         │
+                    ▼                         ▼
                 FastAPI ──────────► Redis (API кэш, кэш цен, кэш графиков Base64)
-                    │                 (PriceChartService)
+                    │ (Единый Service Layer)
           ┌─────────┴─────────┐
           │                   │
           ▼                   ▼
      PostgreSQL           RabbitMQ
                               │
                               ▼
-                        Celery Beat
-                        (тик каждую минуту)
-                              │
-                              ▼
-                       Celery Worker
+                       Celery Worker 
+                  (Smart Scheduling via eta)
                               │
                     ┌─────────┴─────────┐
                     │                   │
@@ -123,7 +120,7 @@ app/
 ## Performance & Reliability
 * **API Caching:** `CacheService` кэширует ответы `GET /subscriptions` (TTL 30s) и истории цен (TTL 60s) с автоматической инвалидацией при любых мутациях данных.
 * **Parser Optimization:** Прямое извлечение JSON из `<script type="application/ld+json">` и атрибутов `data-state` через регулярные выражения. Fallback на meta-теги при изменениях верстки.
-* **Self-Healing Scheduler:** Celery Beat тикает каждую минуту, но реальный интервал контролируется БД. Время `last_check_at` фиксируется в момент *начала* цикла, что полностью устраняет дрейф таймера и позволяет системе автоматически компенсировать временные сбои.
+* **Smart Scheduling (eta):** Отказ от периодического опроса БД через Celery Beat ("тупой метроном"). После успешного выполнения задачи парсинга, она самостоятельно планирует свое следующее выполнение через параметр eta, что полностью устраняет нагрузку на БД от частых SELECT-запросов и дрейф таймера.
 * **Clean Worker Logs:** Кастомный `CeleryTaskNoiseFilter` подавляет избыточные сообщения Celery (`received`, `succeeded`), оставляя только структурные бизнес-события.
 
 ## Worker Infrastructure
@@ -188,9 +185,9 @@ docker compose run --rm migrate alembic upgrade head
 * `POST /api/v1/subscriptions` — создать подписку
 * `GET /api/v1/subscriptions/{user_id}` — получить подписки пользователя *(кэшируется)*
 * `GET /api/v1/subscriptions/{user_id}/archived` — получить архивные подписки пользователя
-* `GET /api/v1/subscriptions/{subscription_id}/prices` — история цен *(кэшируется)*
+* `GET /api/v1/subscriptions/{subscription_id}/prices` — история цен *(кэшируется, с агрегацией DATE_TRUNC)*
 * `GET /api/v1/subscriptions/{subscription_id}/chart` — получить PNG графика *(кэшируется)*
-* `POST /api/v1/subscriptions/{subscription_id}/chart/send` — сгенерировать и отправить график в Telegram (внутренний вызов бота)
+* `POST /api/v1/subscriptions/{subscription_id}/chart/send` — внутренний эндпоинт для отправки графика в Telegram
 * `POST /api/v1/subscriptions/{subscription_id}/parse` — ручной запуск парсинга
 * `GET /api/v1/subscriptions/{subscription_id}/latest-price` — последняя цена
 * `PATCH /api/v1/subscriptions/{subscription_id}/target-price` — обновить целевую цену
@@ -233,6 +230,13 @@ docker compose run --rm migrate alembic upgrade head
 * ⏱ Настраиваемый пользователем cooldown (1-168 часов)
 * 📊 Графики изменения цен (Matplotlib, кэш Base64, делегирование отправки на API)
 
+## Sprint 3C 🚧 (Технический долг и стабилизация стека)
+* 🔄 Синхронизация API и Bot (DRY): сохранение полноценного REST API при использовании единого Service Layer
+* 📉 Downsampling истории цен через `DATE_TRUNC` (защита от OOM при построении графиков)
+* ⏱️ Переход на умное планирование Celery (`eta` вместо Beat-метронома)
+* 🔄 Внедрение Retry-политик для задач парсинга и Dead Letter Exchange (DLX) в RabbitMQ
+* 🧹 Удаление мертвого кода и фоновая очистка старой истории цен
+
 ## Sprint 4 (Планируется)
 * **UX Polish & Resilience:** Глобальный аудит и устранение всех UX-тупиков при ошибках сети
 * **Actionable Notifications:** Кнопки действий (Отложить, Изменить цель, Архив) прямо в сообщении алерта
@@ -244,6 +248,6 @@ docker compose run --rm migrate alembic upgrade head
 
 # Статус проекта
 
-🚀 **Sprint 3B завершен.** 
+🚀 **Sprint 3C в работе.** 
 
-Система оптимизирована, стабильна и обладает продвинутым UX. Парсинг работает молниеносно, API отвечает мгновенно благодаря кэшу, а планировщик гарантирует точность проверок. Реализованы гибкие уведомления и визуализация истории цен с обходом ограничений прокси. Активная разработка новых фич (Sprint 4) продолжается.
+Архитектура прошла критическое ревью. Система оптимизирована: сохранен полноценный REST API (API-First), внедрено умное планирование задач (`eta`), добавлена защита от OOM при построении графиков (`DATE_TRUNC`) и настраиваются retry-политики. Проект полностью готов к масштабированию и переходу к Sprint 4.
