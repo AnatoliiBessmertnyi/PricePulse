@@ -236,24 +236,21 @@ def get_empty_subscriptions_keyboard() -> InlineKeyboardMarkup:
 def get_archived_subscriptions_keyboard(
     archived_subs: list[dict],
 ) -> InlineKeyboardMarkup:
-    """Клавиатура для списка архивных подписок (с кнопкой графика)."""
+    """Клавиатура для списка архивных подписок."""
     keyboard = []
     for sub in archived_subs:
-        name = (sub.get("product_name") or "Без названия")[:25]
+        name = (sub.get("product_name") or "Без названия")[:40]
         sub_id = sub["id"]
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    "📊 График", callback_data=f"chart_select_{sub_id}"
-                ),
-                InlineKeyboardButton(
                     f"♻️ {name}", callback_data=f"reactivate_confirm_{sub_id}"
-                ),
+                )
             ]
         )
 
     keyboard.append(
-        [InlineKeyboardButton("🏠 Назад в меню", callback_data="back_main")]
+        [InlineKeyboardButton("◀️ Назад к списку", callback_data="menu_list")]
     )
     return InlineKeyboardMarkup(keyboard)
 
@@ -318,14 +315,14 @@ def get_chart_subscription_keyboard(
     keyboard = []
     for sub in subscriptions:
         sub_id = sub.get("id")
-        product_name = sub.get("product_name") or "Без названия"
-        if len(product_name) > 30:
-            product_name = product_name[:27] + "..."
+        display_name = sub.get("display_name") or "Без названия"
+        if len(display_name) > 30:
+            display_name = display_name[:27] + "..."
 
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    f"📊 {product_name}", callback_data=f"chart_select_{sub_id}"
+                    f"📊 {display_name}", callback_data=f"chart_select_{sub_id}"
                 )
             ]
         )
@@ -372,7 +369,11 @@ def get_chart_period_keyboard(
                     btn_all, callback_data=f"chart_period_{subscription_id}_all"
                 ),
             ],
-            [InlineKeyboardButton("◀️ Назад к выбору", callback_data="menu_chart")],
+            [
+                InlineKeyboardButton(
+                    "◀️ Назад к выбору подписки", callback_data="menu_chart"
+                )
+            ],
         ]
     )
 
@@ -384,3 +385,22 @@ def get_empty_delete_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("◀️ Назад в меню", callback_data="back_main")],
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_chart_error_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура для обработки ошибки при построении графика."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🔄 Повторить попытку",
+                    callback_data=f"chart_select_{subscription_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "◀️ Назад к выбору подписки", callback_data="menu_chart"
+                )
+            ],
+        ]
+    )

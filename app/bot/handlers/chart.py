@@ -5,6 +5,7 @@ from telegram.ext import ContextTypes
 
 from app.bot.client import HTTPClient
 from app.bot.keyboards.subscriptions import (
+    get_chart_error_keyboard,
     get_chart_period_keyboard,
     get_chart_subscription_keyboard,
 )
@@ -14,7 +15,7 @@ logger = get_logger(__name__)
 
 
 async def chart_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Показать список подписок для выбора графика."""
+    """Показать список всех подписок (активных и архивных) для выбора графика."""
     if not update.effective_user or not update.callback_query:
         return
 
@@ -33,35 +34,45 @@ async def chart_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 user_id = user_data.get("id")
                 context.user_data["user_id"] = user_id
 
-            subscriptions = await client.get_user_subscriptions(user_id)
-            context.user_data["cached_subscriptions"] = subscriptions
+            active_subs = await client.get_user_subscriptions(user_id)
+            archived_subs = await client.get_archived_subscriptions(user_id)
 
-            if not subscriptions:
+            for sub in archived_subs:
+                name = sub.get("product_name") or "Без названия"
+                sub["display_name"] = f"🗄 {name}"
+            for sub in active_subs:
+                sub["display_name"] = sub.get("product_name") or "Товар"
+
+            all_subs = active_subs + archived_subs
+            context.user_data["chart_cached_subscriptions"] = all_subs
+
+            if not all_subs:
                 await query.message.delete()
                 await context.bot.send_message(
-                    chat_id=chat_id, text="У вас нет активных подписок."
+                    chat_id=chat_id, text="У вас нет подписок для просмотра графиков."
                 )
                 return
 
-            total_pages = (len(subscriptions) + 4) // 5
+            total_pages = (len(all_subs) + 4) // 5
             page = context.user_data.get("chart_page", 0)
             start_idx = page * 5
             end_idx = start_idx + 5
-            page_subs = subscriptions[start_idx:end_idx]
+            page_subs = all_subs[start_idx:end_idx]
+
             keyboard = get_chart_subscription_keyboard(
                 page_subs, page=page, total_pages=total_pages
             )
 
             try:
                 await query.edit_message_text(
-                    "📊 Выберите подписку для просмотра графика изменения цены:",
+                    "📊 Выберите подписку для просмотра графика:",
                     reply_markup=keyboard,
                 )
             except Exception:
                 await query.message.delete()
                 await context.bot.send_message(
                     chat_id=chat_id,
-                    text="📊 Выберите подписку для просмотра графика изменения цены:",
+                    text="📊 Выберите подписку для просмотра графика:",
                     reply_markup=keyboard,
                 )
 
@@ -85,7 +96,7 @@ async def show_chart(
 
     try:
         async with HTTPClient() as client:
-            subs = context.user_data.get("cached_subscriptions", [])
+            subs = context.user_data.get("chart_cached_subscriptions", [])
             sub = next((s for s in subs if s.get("id") == sub_id), None)
             if not sub:
                 user_id = context.user_data.get("user_id")
@@ -102,13 +113,11 @@ async def show_chart(
             sub_name = sub.get("product_name") or "Товар"
             target_price = sub.get("target_price")
             user_id = context.user_data.get("user_id")
-
             caption = f"📊 *{sub_name}*\nПериод: {period}"
             if target_price:
                 caption += f" | Цель: {float(target_price):,.0f} ₽"
 
             keyboard = get_chart_period_keyboard(sub_id, period)
-
             success = await client.send_chart_to_telegram(
                 subscription_id=sub_id,
                 user_id=user_id,
@@ -125,12 +134,26 @@ async def show_chart(
                 await query.message.delete()
                 await context.bot.send_message(
                     chat_id=chat_id,
-                    text="⚠️ Не удалось отправить график. Попробуйте позже.",
+                    text=(
+                        f"⚠️ Не удалось построить график для *{sub_name}* из-за ошибки "
+                        "сети.\nПопробуйте еще раз или выберите другую подписку."
+                    ),
+                    parse_mode="Markdown",
+                    reply_markup=get_chart_error_keyboard(sub_id),
                 )
 
     except Exception as e:
         logger.error("show_chart_failed", chat_id=chat_id, sub_id=sub_id, error=str(e))
-        await query.answer("⚠️ Ошибка при построении графика.", show_alert=True)
+        await query.message.delete()
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "⚠️ Произошла непредвиденная ошибка при построении графика для "
+                f"*{sub_name}*."
+            ),
+            parse_mode="Markdown",
+            reply_markup=get_chart_error_keyboard(sub_id),
+        )
 
 
 async def handle_chart_period_change(
