@@ -1,10 +1,9 @@
 from datetime import UTC, datetime
-from decimal import Decimal
 
 from app.core.config import settings
 from app.core.constants import ERROR_MESSAGE_MAX_LENGTH
 from app.core.logging import get_logger
-from app.models.subscription import Subscription, SubscriptionStatus
+from app.models.subscription import SubscriptionStatus
 from app.parsers.exceptions import ParserError, ProductDataNotFoundError
 from app.parsers.factory import ParserFactory
 from app.repositories.parse_error import ParseErrorRepository
@@ -48,11 +47,12 @@ class PriceParsingService:
             subscription.current_price = price
             subscription.last_success_at = now
 
-            if self._should_send_alert(subscription, price):
+            notification_service = NotificationService()
+            if notification_service.should_send_alert(subscription, price):
                 try:
-                    notification_service = NotificationService()
                     notification_service.notify_price_drop(subscription)
                     subscription.alert_sent = True
+                    subscription.last_alert_at = now
                 except Exception as e:
                     logger.error(
                         "notification_error",
@@ -147,22 +147,3 @@ class PriceParsingService:
             )
             await self._subscription_repository.session.commit()
             raise
-
-    def _should_send_alert(
-        self, subscription: Subscription, new_price: Decimal
-    ) -> bool:
-        """
-        Проверить, нужно ли отправить уведомление о снижении цены.
-
-        Условие:
-        - target_price установлен
-        - новая цена <= target_price
-        - уведомление еще не было отправлено (alert_sent = False)
-        """
-        if subscription.target_price is None:
-            return False
-
-        if subscription.alert_sent:
-            return False
-
-        return new_price <= subscription.target_price

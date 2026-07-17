@@ -1,3 +1,5 @@
+import json
+
 import httpx
 from pydantic import BaseModel
 
@@ -177,3 +179,52 @@ class HTTPClient:
 
         response.raise_for_status()
         return True
+
+    async def update_subscription_cooldown(
+        self, subscription_id: int, user_id: int, cooldown_hours: int
+    ) -> dict:
+        """Обновить cooldown_hours через API"""
+        response = await self._request(
+            "PATCH",
+            f"/api/v1/subscriptions/{subscription_id}/cooldown?user_id={user_id}",
+            json={"cooldown_hours": cooldown_hours},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_subscription_chart(
+        self, subscription_id: int, user_id: int, period: str
+    ) -> bytes | None:
+        """Получить PNG графика через API."""
+        response = await self._request(
+            "GET",
+            f"/api/v1/subscriptions/{subscription_id}/chart",
+            params={"period": period, "user_id": user_id},
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.content
+
+    async def send_chart_to_telegram(
+        self,
+        subscription_id: int,
+        user_id: int,
+        chat_id: int,
+        period: str,
+        caption: str,
+        reply_markup,
+    ) -> bool:
+        """Попросить API сгенерировать и отправить график в Telegram."""
+        response = await self._request(
+            "POST",
+            f"/api/v1/subscriptions/{subscription_id}/chart/send",
+            params={
+                "chat_id": chat_id,
+                "period": period,
+                "user_id": user_id,
+                "caption": caption,
+                "reply_markup": json.dumps(reply_markup),
+            },
+        )
+        return response.status_code == 200
