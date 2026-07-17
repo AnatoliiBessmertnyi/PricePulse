@@ -1,15 +1,18 @@
 import contextlib
 from datetime import UTC, datetime
 
-from telegram import Update
+from telegram import LinkPreviewOptions, Update
 from telegram.ext import ContextTypes
 
 from app.bot.client import HTTPClient
 from app.bot.keyboards.subscriptions import (
+    get_archived_subscriptions_keyboard,
+    get_empty_archived_keyboard,
     get_empty_subscriptions_keyboard,
     get_subscriptions_list_keyboard,
 )
 from app.bot.utils.safe_edit import is_stale_callback_error
+from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -87,31 +90,53 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         message += f"Страница {page + 1} из {total_pages}\n\n"
 
         for idx, sub in enumerate(page_subscriptions, start_idx + 1):
-            product_name = sub.get("product_name") or "Без названия"
+            raw_name = sub.get("product_name")
+            consecutive_errors = sub.get("consecutive_errors", 0)
             current_price = sub.get("current_price")
             target_price = sub.get("target_price")
             marketplace = sub.get("marketplace", "").upper()
             alert_sent = sub.get("alert_sent", False)
-            message += f"{idx}. {product_name}\n"
+            product_url = sub.get("product_url", "")
+            cooldown_hours = sub.get("cooldown_hours", 24)
+
+            display_name = raw_name if raw_name else "Товар (данные не получены)"
+            message += f"{idx}. {display_name}\n"
 
             if marketplace:
-                message += f"   🏪 {marketplace}\n"
+                message += f"  🏪 {marketplace}\n"
+
             if current_price is not None:
-                price_value = float(current_price)
-                message += f"   💰 {price_value:,.2f} ₽\n"
+                message += f"  💰 {float(current_price):,.2f} ₽\n"
             else:
-                message += "   💰 Цена не определена\n"
+                message += "  💰 Цена не определена\n"
 
             if target_price is not None:
-                target_value = float(target_price)
-                message += f"   🎯 {target_value:,.2f} ₽\n"
+                message += f"  🎯 {float(target_price):,.2f} ₽\n"
 
-                if alert_sent:
-                    message += "   📊 ✅ Уведомление отправлено\n"
-                elif current_price is not None and current_price <= target_price:
-                    message += "   📊 🔔 Цена достигла цели!\n"
-                else:
-                    message += "   📊 ⏳ Мониторинг\n"
+            message += f"  🔁 Уведомления: каждые {cooldown_hours}ч\n"
+
+            if consecutive_errors > 0:
+                max_errors = settings.max_consecutive_errors
+                message += (
+                    f"  📊 ⚠️Ошибка получения данных ({consecutive_errors}/"
+                    f"{max_errors})\n"
+                )
+            elif alert_sent:
+                message += "  📊 ✅ Уведомление отправлено\n"
+            elif (
+                target_price is not None
+                and current_price is not None
+                and float(current_price) <= float(target_price)
+            ):
+                message += "  📊 🔔 Цена достигла цели!\n"
+            elif target_price is not None:
+                message += "  📊 ⏳ Мониторинг\n"
+            else:
+                message += "  📊 ⏳ Мониторинг (без целевой цены)\n"
+
+            # 3. Ссылка на товар
+            if product_url:
+                message += f"  🔗 {product_url}\n"
 
             message += "\n"
 
@@ -124,12 +149,15 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             show_refresh=True,
         )
 
+        preview_options = LinkPreviewOptions(is_disabled=True)
         if update.callback_query:
             await update.callback_query.edit_message_text(
-                message, reply_markup=keyboard
+                message, reply_markup=keyboard, link_preview_options=preview_options
             )
         elif update.message:
-            await update.message.reply_text(message, reply_markup=keyboard)
+            await update.message.reply_text(
+                message, reply_markup=keyboard, link_preview_options=preview_options
+            )
 
     except Exception as e:
         logger.error("list_command_failed", chat_id=chat_id, error=str(e))
@@ -142,3 +170,45 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 await update.callback_query.answer(
                     "⚠️ Произошла ошибка. Попробуйте ещё раз.", show_alert=True
                 )
+
+
+async def archived_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает список архивных подписок."""
+    if not update.effective_user:
+        return
+
+    chat_id = update.effective_user.id
+    logger.info("archived_command", chat_id=chat_id)
+
+    try:
+        async with HTTPClient() as client:
+            user_id = context.user_data.get("user_id")
+            if not user_id:
+                user_data = await client.create_user(
+                    chat_id=chat_id, username=update.effective_user.username
+                )
+                user_id = user_data.get("id")
+                context.user_data["user_id"] = user_id
+
+            archived_subs = await client.get_archived_subscriptions(user_id)
+
+            if not archived_subs:
+                message = "🗄 У вас нет архивных подписок. Все ваши подписки активны!"
+                keyboard = get_empty_archived_keyboard()
+            else:
+                message = f"🗄 Архивные подписки ({len(archived_subs)} шт.)\n\n"
+                message += "Нажмите на подписку, чтобы реактивировать её:"
+                keyboard = get_archived_subscriptions_keyboard(archived_subs)
+
+            preview_options = LinkPreviewOptions(is_disabled=True)
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    message, reply_markup=keyboard, link_preview_options=preview_options
+                )
+            elif update.message:
+                await update.message.reply_text(
+                    message, reply_markup=keyboard, link_preview_options=preview_options
+                )
+
+    except Exception as e:
+        logger.error("archived_command_failed", chat_id=chat_id, error=str(e))

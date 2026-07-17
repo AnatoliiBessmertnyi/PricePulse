@@ -1,13 +1,15 @@
 import asyncio
 import contextlib
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from app.bot.client import HTTPClient
 from app.bot.handlers.add import add_command
+from app.bot.handlers.chart import chart_menu, handle_chart_period_change, show_chart
 from app.bot.handlers.delete import confirm_delete, delete_command, execute_delete
 from app.bot.handlers.help import help_command
-from app.bot.handlers.list import list_command
+from app.bot.handlers.list import archived_command, list_command
 from app.bot.handlers.set_target import set_target_menu
 from app.bot.keyboards.main_menu import get_main_menu_keyboard
 from app.bot.utils.safe_edit import is_stale_callback_error
@@ -114,6 +116,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         elif callback_data == "cancel_target":
             await set_target_menu(update, context)
 
+        # Отмена настройки cooldown (возврат к списку подписок)
+        elif callback_data == "cancel_cooldown":
+            context.user_data.pop("target_cooldown_sub_id", None)
+            context.user_data["list_page"] = 0
+            await list_command(update, context)
+
         # Установка target_price (обрабатывается ConversationHandler)
         elif (
             callback_data.startswith("set_target_select_")
@@ -121,6 +129,65 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             or callback_data == "noop"
         ):
             pass
+
+        elif callback_data == "menu_archived":
+            await archived_command(update, context)
+
+        elif callback_data.startswith("reactivate_confirm_"):
+            subscription_id = int(callback_data.split("_")[-1])
+            await query.edit_message_text(
+                "♻️ Реактивировать эту подписку?\n\n"
+                "Счетчик ошибок будет сброшен, и мониторинг возобновится.",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "✅ Да, реактивировать",
+                                callback_data=f"reactivate_yes_{subscription_id}",
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                "❌ Отмена", callback_data="menu_archived"
+                            )
+                        ],
+                    ]
+                ),
+            )
+
+        elif callback_data.startswith("reactivate_yes_"):
+            subscription_id = int(callback_data.split("_")[-1])
+            user_id = context.user_data.get("user_id")
+
+            async with HTTPClient() as client:
+                success = await client.reactivate_subscription(subscription_id, user_id)
+
+            if success:
+                context.user_data["cached_subscriptions"] = None
+                await archived_command(update, context)
+            else:
+                await query.edit_message_text("⚠️ Не удалось реактивировать подписку.")
+
+        elif callback_data.startswith("page_set_cooldown_") or callback_data.startswith(
+            "set_cooldown_select_"
+        ):
+            pass
+
+        elif callback_data == "menu_chart":
+            await chart_menu(update, context)
+
+        elif callback_data.startswith("chart_select_"):
+            sub_id = int(callback_data.split("_")[-1])
+            saved_period = context.user_data.get(f"chart_period_{sub_id}", "7d")
+            await show_chart(update, context, sub_id, period=saved_period)
+
+        elif callback_data.startswith("chart_period_"):
+            await handle_chart_period_change(update, context)
+
+        elif callback_data.startswith("page_chart_"):
+            page = int(callback_data.split("_")[-1])
+            context.user_data["chart_page"] = page
+            await chart_menu(update, context)
 
         else:
             logger.warning("unknown_callback", callback_data=callback_data)

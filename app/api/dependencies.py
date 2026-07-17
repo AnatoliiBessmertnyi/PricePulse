@@ -9,6 +9,7 @@ from app.repositories.price_history import PriceHistoryRepository
 from app.repositories.subscription import SubscriptionRepository
 from app.repositories.user import UserRepository
 from app.services.price import PriceCache, PriceService
+from app.services.price_chart import PriceChartService
 from app.services.subscription import SubscriptionService
 from app.services.user import UserService
 
@@ -58,4 +59,14 @@ def get_price_service(
     return PriceService(
         price_history_repository=repository,
         price_cache=price_cache,
+    )
+
+
+def get_price_chart_service(
+    repository: PriceHistoryRepository = Depends(get_price_history_repository),
+    cache: CacheService = Depends(get_cache_service),
+) -> PriceChartService:
+    return PriceChartService(
+        price_history_repository=repository,
+        cache_service=cache,
     )

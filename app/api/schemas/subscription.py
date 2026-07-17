@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 
 
 class SubscriptionCreate(BaseModel):
@@ -20,6 +20,8 @@ class SubscriptionResponse(BaseModel):
     current_price: Decimal | None
     target_price: Decimal | None
     is_active: bool
+    status: str
+    consecutive_errors: int
     last_check_at: datetime | None
     last_success_at: datetime | None
     created_at: datetime
@@ -31,3 +33,9 @@ class SubscriptionResponse(BaseModel):
 
 class UpdateTargetPrice(BaseModel):
     target_price: Decimal | None
+
+
+class UpdateCooldown(BaseModel):
+    cooldown_hours: int = Field(
+        ge=1, le=168, description="Интервал уведомлений в часах (от 1 до 168)"
+    )

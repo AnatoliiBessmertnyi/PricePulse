@@ -17,15 +17,25 @@ from telegram.request import HTTPXRequest
 from app.bot.config import bot_settings
 from app.bot.handlers.add import add_command, cancel_add, handle_url
 from app.bot.handlers.callbacks import button_handler
+from app.bot.handlers.cooldown import (
+    cancel_cooldown_setup,
+    handle_cooldown_pagination,
+    receive_cooldown_hours,
+    select_cooldown_subscription,
+    start_cooldown_menu,
+)
 from app.bot.handlers.help import help_command
-from app.bot.handlers.list import list_command
 from app.bot.handlers.set_target import (
     cancel_set_target,
     handle_target_price,
     set_target_command,
 )
 from app.bot.handlers.start import start_command
-from app.bot.states import WAITING_FOR_TARGET_PRICE, WAITING_FOR_URL
+from app.bot.states import (
+    WAITING_COOLDOWN_HOURS,
+    WAITING_FOR_TARGET_PRICE,
+    WAITING_FOR_URL,
+)
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 
@@ -87,10 +97,10 @@ def main():
         logger.info("using_custom_api_url", url=bot_settings.telegram_api_url)
         api_url = bot_settings.telegram_api_url.rstrip("/")
         request = HTTPXRequest(
-            connect_timeout=30.0,
-            read_timeout=30.0,
-            write_timeout=30.0,
-            pool_timeout=30.0,
+            connect_timeout=60.0,
+            read_timeout=60.0,
+            write_timeout=60.0,
+            pool_timeout=60.0,
         )
         bot = Bot(
             token=bot_settings.telegram_bot_token,
@@ -146,15 +156,40 @@ def main():
         persistent=False,
     )
 
+    cooldown_conversation_handler = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_cooldown_menu, pattern="^set_cooldown_menu$"),
+        ],
+        states={
+            WAITING_COOLDOWN_HOURS: [
+                CallbackQueryHandler(
+                    handle_cooldown_pagination, pattern=r"^page_set_cooldown_\d+$"
+                ),
+                CallbackQueryHandler(
+                    select_cooldown_subscription, pattern=r"^set_cooldown_select_\d+$"
+                ),
+                CallbackQueryHandler(
+                    cancel_cooldown_setup, pattern="^cancel_cooldown$"
+                ),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_cooldown_hours),
+            ],
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_cooldown_setup, pattern="^cancel_cooldown$"),
+        ],
+        name="cooldown_conversation",
+        persistent=False,
+    )
+
+    application.add_handler(cooldown_conversation_handler)
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("list", list_command))
     application.add_handler(add_conversation_handler)
     application.add_handler(set_target_conversation_handler)
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_error_handler(error_handler)
 
-    def shutdown_handler(signum, frame):
+    def shutdown_handler(signum, _frame):
         logger.info("shutdown_signal_received", signum=signum)
         application.stop()
         sys.exit(0)
