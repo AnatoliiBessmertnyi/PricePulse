@@ -5,13 +5,13 @@ from rich.traceback import install as install_rich_traceback
 
 from app.core.config import settings
 from app.core.logging import setup_logging
-from app.workers.beat_schedule import beat_schedule
 from app.workers.settings import DEFAULT_QUEUE
 
 install_rich_traceback(
     show_locals=True, locals_max_string=100, locals_max_length=10, max_frames=15
 )
 setup_logging(settings.log_level)
+
 celery_app = Celery("pricepulse", broker=settings.rabbitmq_url)
 
 celery_app.conf.update(
@@ -41,8 +41,6 @@ celery_app.conf.update(
         "[%(asctime)s: %(levelname)s/%(processName)s]"
         "[%(task_name)s(%(task_id)s)] %(message)s"
     ),
-    # === Beat Schedule ===
-    beat_schedule=beat_schedule,
 )
 
 celery_app.autodiscover_tasks(["app.workers.tasks"])
