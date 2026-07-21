@@ -65,10 +65,11 @@ async def get_user_subscriptions(
 @router.get("/{subscription_id}/prices", response_model=list[dict])
 async def get_price_history(
     subscription_id: int,
+    period: str = Query(default="7d", pattern="^(24h|7d|30d|all)$"),
     price_service: PriceService = Depends(get_price_service),
 ) -> list[dict]:
-    """Получает историю цен для указанной подписки через сервис."""
-    return await price_service.get_price_history(subscription_id)
+    """Получает агрегированную историю цен за указанный период."""
+    return await price_service.get_price_history(subscription_id, period)
 
 
 @router.post("/{subscription_id}/parse", status_code=202)

@@ -66,27 +66,21 @@ class PriceService:
         await self._price_cache.set(cache_key, str(price), REDIS_PRICE_TTL)
         await self._price_cache.delete(f"prices:history:{subscription_id}")
 
-    async def get_price_history(self, subscription_id: int) -> list[dict]:
-        """Получает историю цен из кэша или БД с последующим кэшированием результата."""
-        cache_key = f"prices:history:{subscription_id}"
+    async def get_price_history(
+        self, subscription_id: int, period: str = "7d"
+    ) -> list[dict]:
+        """Получает агрегированную историю цен за указанный период с кэшированием."""
+        cache_key = f"prices:history:{subscription_id}:{period}"
         cached_data = await self._price_cache.get(cache_key)
+
         if cached_data:
             return json.loads(cached_data)
 
-        history = await self._price_history_repository.get_by_subscription_id(
-            subscription_id
+        history = await self._price_history_repository.get_aggregated_price_history(
+            subscription_id, period
         )
-        data_to_cache = [
-            {
-                "id": record.id,
-                "subscription_id": record.subscription_id,
-                "price": float(record.price),
-                "created_at": record.created_at.isoformat(),
-            }
-            for record in history
-        ]
-        await self._price_cache.set(cache_key, json.dumps(data_to_cache), ttl=60)
-        return data_to_cache
+        await self._price_cache.set(cache_key, json.dumps(history, default=str), ttl=60)
+        return history
 
     async def get_latest_price(self, subscription_id: int) -> Decimal | None:
         """Получает последнюю известную цену из кэша или базы данных."""
