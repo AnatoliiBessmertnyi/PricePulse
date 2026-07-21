@@ -1,6 +1,7 @@
 import logging
 
 from celery import Celery
+from kombu import Exchange, Queue
 from rich.traceback import install as install_rich_traceback
 
 from app.core.config import settings
@@ -13,6 +14,23 @@ install_rich_traceback(
 setup_logging(settings.log_level)
 
 celery_app = Celery("pricepulse", broker=settings.rabbitmq_url)
+dlx_exchange = Exchange("dead_letter", type="direct")
+task_queues = (
+    Queue(
+        DEFAULT_QUEUE,
+        Exchange(DEFAULT_QUEUE, type="direct"),
+        routing_key=DEFAULT_QUEUE,
+        queue_arguments={
+            "x-dead-letter-exchange": "dead_letter",
+            "x-dead-letter-routing-key": "dead_letter",
+        },
+    ),
+    Queue(
+        "dead_letter",
+        dlx_exchange,
+        routing_key="dead_letter",
+    ),
+)
 
 celery_app.conf.update(
     task_serializer="json",
@@ -23,6 +41,7 @@ celery_app.conf.update(
     task_track_started=True,
     broker_connection_retry_on_startup=True,
     task_default_queue=DEFAULT_QUEUE,
+    task_queues=task_queues,
     # === Concurrency & Resource Limits ===
     worker_concurrency=settings.worker_concurrency,
     worker_prefetch_multiplier=1,
