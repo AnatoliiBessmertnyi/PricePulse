@@ -1,8 +1,10 @@
 import asyncio
 import time
+from datetime import UTC, datetime, timedelta
 
 from celery.exceptions import SoftTimeLimitExceeded
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.parsers.exceptions import ParserError
 from app.repositories.subscription import SubscriptionRepository
@@ -25,26 +27,30 @@ logger = get_logger(__name__)
     max_retries=3,
 )
 def parse_price(subscription_id: int) -> None:
+    """Выполняет парсинг цены с политиками retry и умным планированием."""
     try:
         asyncio.run(_parse_price(subscription_id))
+    except (ParserError, ValueError) as e:
+        logger.warning(
+            "parse_price_parse_error", subscription_id=subscription_id, error=str(e)
+        )
+        asyncio.run(_mark_as_failed(subscription_id))
     except SoftTimeLimitExceeded:
         logger.warning("parse_price_timeout", subscription_id=subscription_id)
         asyncio.run(_mark_as_failed(subscription_id))
     except Exception as e:
-        is_parse_error = isinstance(e, (ParserError, ValueError))
         logger.error(
-            "parse_price_error" if not is_parse_error else "parse_price_parse_error",
+            "parse_price_error",
             subscription_id=subscription_id,
             error=str(e),
-            error_type=type(e).__name__,
+            exc_info=True,
         )
         asyncio.run(_mark_as_failed(subscription_id))
-        if not is_parse_error:
-            raise
+        raise
 
 
 async def _mark_as_failed(subscription_id: int) -> None:
-    """Пометить подписку как FAILED."""
+    """Помечает подписку как FAILED в базе данных."""
     engine = create_worker_engine()
     async_session_factory = create_worker_session_factory(engine)
     try:
@@ -57,6 +63,7 @@ async def _mark_as_failed(subscription_id: int) -> None:
 
 
 async def _parse_price(subscription_id: int) -> None:
+    """Выполняет основную логику парсинга и планирует следующий запуск."""
     engine = create_worker_engine()
     async_session_factory = create_worker_session_factory(engine)
     start_time = time.monotonic()
@@ -66,6 +73,7 @@ async def _parse_price(subscription_id: int) -> None:
         async with async_session_factory() as session:
             repo = SubscriptionRepository(session)
             service = await get_price_parsing_service(session)
+
             is_active = await service.parse_subscription(
                 subscription_id=subscription_id
             )
@@ -74,6 +82,7 @@ async def _parse_price(subscription_id: int) -> None:
                     "parse_price_skipped_archived", subscription_id=subscription_id
                 )
                 return
+
             subscription = await repo.get(subscription_id)
             if (
                 subscription
@@ -103,14 +112,22 @@ async def _parse_price(subscription_id: int) -> None:
             await repo.mark_as_idle(subscription_id)
             await session.commit()
 
+            next_check_at = datetime.now(UTC) + timedelta(
+                seconds=settings.price_check_interval
+            )
+            parse_price.apply_async(args=[subscription_id], eta=next_check_at)
+            logger.info(
+                "parse_price_next_scheduled",
+                subscription_id=subscription_id,
+                eta=next_check_at.isoformat(),
+            )
+
     except Exception as e:
         logger.exception(
-            "parse_price_failed",
-            subscription_id=subscription_id,
-            error=str(e),
-            error_type=type(e).__name__,
+            "parse_price_failed", subscription_id=subscription_id, error=str(e)
         )
         await repo.mark_as_failed(subscription_id)
         await session.commit()
+        raise
     finally:
         await engine.dispose()
