@@ -31,6 +31,7 @@ async def create_subscription(
     data: SubscriptionCreate,
     service: SubscriptionService = Depends(get_subscription_service),
 ) -> SubscriptionResponse:
+    """Создает новую подписку на отслеживание цены."""
     subscription = await service.create_subscription(
         user_id=data.user_id,
         marketplace=data.marketplace,
@@ -46,6 +47,7 @@ async def get_user_subscriptions(
     service: SubscriptionService = Depends(get_subscription_service),
     cache: CacheService = Depends(get_cache_service),
 ) -> list[SubscriptionResponse]:
+    """Получает список подписок пользователя с кэшированием результата."""
     cache_key = f"subs:user:{user_id}"
     cached_data = await cache.get_json(cache_key)
     if cached_data:
@@ -63,26 +65,11 @@ async def get_user_subscriptions(
 @router.get("/{subscription_id}/prices", response_model=list[dict])
 async def get_price_history(
     subscription_id: int,
+    period: str = Query(default="7d", pattern="^(24h|7d|30d|all)$"),
     price_service: PriceService = Depends(get_price_service),
-    cache: CacheService = Depends(get_cache_service),
 ) -> list[dict]:
-    cache_key = f"prices:history:{subscription_id}"
-    cached_data = await cache.get_json(cache_key)
-    if cached_data:
-        return cached_data
-
-    history = await price_service.get_price_history(subscription_id)
-    data_to_cache = [
-        {
-            "id": record.id,
-            "subscription_id": record.subscription_id,
-            "price": float(record.price),
-            "created_at": record.created_at.isoformat(),
-        }
-        for record in history
-    ]
-    await cache.set_json(cache_key, data_to_cache, ttl=60)
-    return data_to_cache
+    """Получает агрегированную историю цен за указанный период."""
+    return await price_service.get_price_history(subscription_id, period)
 
 
 @router.post("/{subscription_id}/parse", status_code=202)
@@ -90,6 +77,7 @@ async def trigger_manual_parsing(
     subscription_id: int,
     subscription_service: SubscriptionService = Depends(get_subscription_service),
 ) -> dict:
+    """Запускает задачу парсинга цены для подписки в фоновом режиме."""
     subscription = await subscription_service.get_subscription(subscription_id)
     if not subscription:
         raise HTTPException(status_code=404, detail="Subscription not found")
@@ -102,6 +90,7 @@ async def trigger_manual_parsing(
 async def get_latest_price(
     subscription_id: int, price_service: PriceService = Depends(get_price_service)
 ) -> dict:
+    """Получает последнюю известную цену для указанной подписки."""
     price = await price_service.get_latest_price(subscription_id)
     if price is None:
         raise HTTPException(status_code=404, detail="Price not found")
@@ -119,7 +108,7 @@ async def delete_subscription(
     user_id: int,
     service: SubscriptionService = Depends(get_subscription_service),
 ) -> None:
-    """Удалить подписку."""
+    """Удаляет подписку пользователя по идентификатору."""
     deleted = await service.delete_subscription(subscription_id, user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Subscription not found")
@@ -132,7 +121,7 @@ async def update_target_price(
     data: UpdateTargetPrice,
     service: SubscriptionService = Depends(get_subscription_service),
 ) -> SubscriptionResponse:
-    """Обновить target_price для подписки."""
+    """Обновляет целевую цену для указанной подписки."""
     subscription = await service.update_target_price(
         subscription_id=subscription_id, user_id=user_id, target_price=data.target_price
     )
@@ -146,7 +135,7 @@ async def update_target_price(
 async def get_archived_subscriptions(
     user_id: int, service: SubscriptionService = Depends(get_subscription_service)
 ) -> list[SubscriptionResponse]:
-    """Получить архивные подписки пользователя."""
+    """Получает список архивных подписок пользователя."""
     subscriptions = await service.get_archived_subscriptions(user_id)
     return [SubscriptionResponse.model_validate(item) for item in subscriptions]
 
@@ -157,7 +146,7 @@ async def reactivate_subscription(
     user_id: int,
     service: SubscriptionService = Depends(get_subscription_service),
 ) -> SubscriptionResponse:
-    """Реактивировать архивную подписку."""
+    """Реактивирует архивную подписку пользователя."""
     success = await service.reactivate_subscription(subscription_id, user_id)
     if not success:
         raise HTTPException(
@@ -175,7 +164,7 @@ async def update_cooldown(
     data: UpdateCooldown,
     service: SubscriptionService = Depends(get_subscription_service),
 ) -> SubscriptionResponse:
-    """Обновить cooldown_hours для подписки."""
+    """Обновляет период задержки уведомлений для указанной подписки."""
     subscription = await service.update_cooldown(
         subscription_id=subscription_id,
         user_id=user_id,
@@ -195,10 +184,7 @@ async def get_chart(
     subscription_service: SubscriptionService = Depends(get_subscription_service),
     chart_service: PriceChartService = Depends(get_price_chart_service),
 ) -> Response:
-    from app.core.logging import get_logger
-
-    logger = get_logger(__name__)
-
+    """Генерирует и возвращает изображение графика цен за указанный период."""
     logger.info(
         "chart_generation_started", subscription_id=subscription_id, period=period
     )
@@ -253,11 +239,11 @@ async def send_chart_to_telegram(
     period: str = Query(default="7d", pattern="^(7d|30d|all)$"),
     user_id: int = Query(...),
     caption: str = Query(...),
-    reply_markup: str = Query(...),  # Передаем как JSON-строку
+    reply_markup: str = Query(...),
     subscription_service: SubscriptionService = Depends(get_subscription_service),
     chart_service: PriceChartService = Depends(get_price_chart_service),
 ) -> dict:
-    """Генерирует график и отправляет его напрямую в Telegram через API."""
+    """Генерирует график и отправляет его в Telegram через API."""
     subscription = await subscription_service.get_subscription(subscription_id)
     if not subscription or subscription.user_id != user_id:
         raise HTTPException(status_code=404, detail="Subscription not found")
