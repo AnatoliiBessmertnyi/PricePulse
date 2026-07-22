@@ -1,6 +1,9 @@
-from sqlalchemy import func, select
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import delete, func, select
 
 from app.models.price_history import PriceHistory
+from app.models.subscription import Subscription, SubscriptionStatus
 from app.repositories.base import BaseRepository
 
 
@@ -71,3 +74,18 @@ class PriceHistoryRepository(BaseRepository[PriceHistory]):
             }
             for row in rows
         ]
+
+    async def cleanup_old_archived_history(self, days: int = 90) -> int:
+        """Удаляет записи истории цен старых архивных подписок."""
+        cutoff_date = datetime.now(UTC) - timedelta(days=days)
+        stmt = delete(PriceHistory).where(
+            PriceHistory.subscription_id.in_(
+                select(Subscription.id).where(
+                    Subscription.status == SubscriptionStatus.ARCHIVED
+                )
+            ),
+            PriceHistory.created_at < cutoff_date,
+        )
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.rowcount

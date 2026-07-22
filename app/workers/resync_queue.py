@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 from app.models.subscription import Subscription, SubscriptionStatus
 from app.workers.database import create_worker_engine, create_worker_session_factory
+from app.workers.tasks.cleanup_history import cleanup_old_price_history
 from app.workers.tasks.parse_price import parse_price
 
 logger = get_logger(__name__)
@@ -43,6 +44,9 @@ async def resync_queue() -> None:
 
                 parse_price.apply_async(args=[sub_id], eta=eta)
                 scheduled_count += 1
+
+        cleanup_old_price_history.apply_async()
+        logger.info("history_cleanup_initial_scheduled")
 
         logger.info(
             "queue_resync_completed",
