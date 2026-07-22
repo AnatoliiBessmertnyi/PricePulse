@@ -86,7 +86,7 @@ services:
     build: .
     env_file:
       - .env
-    command: python -m app.cli.resync_queue
+    command: python -m app.workers.resync_queue
     restart: "no"
     depends_on:
       migrate:
