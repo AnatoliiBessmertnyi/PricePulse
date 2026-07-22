@@ -12,45 +12,44 @@ PricePulse — высокопроизводительный сервис мон�
 
 * ✅ Мониторинг цен на Ozon
 * ⚡️ **Молниеносный парсинг:** 2-4 секунды на товар (оптимизация через Regex вместо тяжелого DOM-парсинга)
-* 🚀 **Redis кэширование API:** Мгновенные ответы бота, снижение нагрузки на БД на 50-70%
-* 🕒 **Самовосстанавливающееся расписание:** Проверки работают строго по интервалу без дрейфа таймера (timer drift)
-* ✅ **Умные уведомления:** Настраиваемый пользователем cooldown (от 1 до 168 часов), автоматический сброс при росте цены
-* ✅ **Графики изменения цен:** Визуализация истории (Matplotlib), кэширование в Redis, поддержка периодов (7д, 30д, всё время)
-* ✅ **Обработка "мёртвых" подписок:** Автоматическая архивация после 3 ошибок с возможностью реактивации
-* ✅ Inline keyboard навигация и единый виджет UX (без спама сообщениями)
-* ✅ Чистые, структурированные логи без технического шума
+* 🚀 **Redis кэширование API:** Мгновенные ответы, снижение нагрузки на БД на 50-70%
+* 🕒 **Умное планирование (Smart Scheduling):** Проверки работают строго по интервалу через `eta` без Celery Beat, что полностью устраняет дрейф таймера и лишние SELECT-запросы к БД.
+* 🛡️ **Надежность:** Retry-политики при сетевых сбоях и Dead Letter Exchange (DLX) в RabbitMQ для обработки потерянных задач.
+* 🧹 **Автоматическая очистка:** Фоновая задача удаляет историю цен старше 90 дней для архивных подписок, предотвращая разрастание БД.
+* ✅ **Умные уведомления:** Настраиваемый пользователем cooldown (от 1 до 168 часов), автоматический сброс при росте цены.
+* ✅ **Графики изменения цен:** Визуализация истории (Matplotlib), кэширование в Redis, защита от OOM через агрегацию `DATE_TRUNC`.
+* ✅ **Обработка "мёртвых" подписок:** Автоматическая архивация после 3 ошибок с возможностью реактивации.
+* ✅ Inline keyboard навигация и единый виджет UX (без спама сообщениями).
+* ✅ Чистые, структурированные логи без технического шума.
 
 Планируемый функционал:
 
-* Мониторинг цен на Wildberries и Яндекс.Маркет
-* Actionable Notifications (кнопки действий прямо в сообщении об изменении цены)
-* Глобальный UX Polish (устранение всех возможных тупиков при сетевых ошибках)
-* Покрытие кода Unit и Integration тестами (70%+)
+* Мониторинг цен на Wildberries и Яндекс.Маркет.
+* Actionable Notifications (кнопки действий прямо в сообщении об изменении цены).
+* Глобальный UX Polish (устранение всех возможных тупиков при сетевых ошибках).
+* Покрытие кода Unit и Integration тестами (70%+).
 
 ---
 
 # Архитектура
 
 ```text
-                Telegram / CLI
+                Telegram / CLI Client
                     │
                     ▼
-           Telegram Bot ──────► Cloudflare Worker (прокси)
-                    │
-                    ▼
+           Telegram Bot / CLI ──────► Cloudflare Worker (прокси)
+                    │                         │
+                    ▼                         ▼
                 FastAPI ──────────► Redis (API кэш, кэш цен, кэш графиков Base64)
-                    │                 (PriceChartService)
+                    │ (Единый Service Layer)
           ┌─────────┴─────────┐
           │                   │
           ▼                   ▼
-     PostgreSQL           RabbitMQ
+     PostgreSQL           RabbitMQ (с поддержкой DLX)
                               │
                               ▼
-                        Celery Beat
-                        (тик каждую минуту)
-                              │
-                              ▼
-                       Celery Worker
+                       Celery Worker 
+                  (Smart Scheduling via eta)
                               │
                     ┌─────────┴─────────┐
                     │                   │
@@ -75,7 +74,7 @@ PricePulse — высокопроизводительный сервис мон�
 ## Очереди и кэш
 * RabbitMQ
 * Redis (кэш API и последних цен)
-* Celery + Celery Beat
+* Celery (без Beat, умное планирование через `eta`)
 
 ## Telegram
 * python-telegram-bot
@@ -112,8 +111,8 @@ app/
 ├── models/           # SQLAlchemy models
 ├── parsers/          # Marketplace parsers (Ozon)
 ├── repositories/     # Data access layer
-├── services/         # Business logic (включая NotificationService)
-└── workers/          # Celery tasks, beat schedule & browser manager
+├── services/         # Business logic (включая NotificationService и кэширование)
+└── workers/          # Celery tasks, queue resync & browser manager
 ```
 
 ---
@@ -123,12 +122,14 @@ app/
 ## Performance & Reliability
 * **API Caching:** `CacheService` кэширует ответы `GET /subscriptions` (TTL 30s) и истории цен (TTL 60s) с автоматической инвалидацией при любых мутациях данных.
 * **Parser Optimization:** Прямое извлечение JSON из `<script type="application/ld+json">` и атрибутов `data-state` через регулярные выражения. Fallback на meta-теги при изменениях верстки.
-* **Self-Healing Scheduler:** Celery Beat тикает каждую минуту, но реальный интервал контролируется БД. Время `last_check_at` фиксируется в момент *начала* цикла, что полностью устраняет дрейф таймера и позволяет системе автоматически компенсировать временные сбои.
+* **Smart Scheduling (eta):** Отказ от периодического опроса БД через Celery Beat ("тупой метроном"). После успешного выполнения задачи парсинга, она самостоятельно планирует свое следующее выполнение через параметр `eta`, что полностью устраняет нагрузку на БД от частых SELECT-запросов и дрейф таймера.
+* **Dead Letter Exchange (DLX):** Настройка RabbitMQ для перехвата задач, исчерпавших попытки retry, с возможностью ручного разбора и предотвращения потери данных.
 * **Clean Worker Logs:** Кастомный `CeleryTaskNoiseFilter` подавляет избыточные сообщения Celery (`received`, `succeeded`), оставляя только структурные бизнес-события.
 
 ## Worker Infrastructure
 * **ProcessBrowser (singleton per process):** Каждый Celery worker-процесс имеет свой экземпляр браузера Playwright, переиспользуемый между задачами.
 * **Database Factories:** Фабрики `create_worker_engine()` устраняют конфликты event loop в синхронных задачах Celery.
+* **Автоматическая очистка истории:** Саморегистрирующаяся фоновая задача удаляет записи `PriceHistory` старше 90 дней для архивных подписок, предотвращая разрастание БД.
 
 ## Telegram Bot UX
 * **Единый виджет:** Все действия происходят в одном редактируемом сообщении.
@@ -188,9 +189,9 @@ docker compose run --rm migrate alembic upgrade head
 * `POST /api/v1/subscriptions` — создать подписку
 * `GET /api/v1/subscriptions/{user_id}` — получить подписки пользователя *(кэшируется)*
 * `GET /api/v1/subscriptions/{user_id}/archived` — получить архивные подписки пользователя
-* `GET /api/v1/subscriptions/{subscription_id}/prices` — история цен *(кэшируется)*
+* `GET /api/v1/subscriptions/{subscription_id}/prices` — история цен *(кэшируется, с агрегацией DATE_TRUNC)*
 * `GET /api/v1/subscriptions/{subscription_id}/chart` — получить PNG графика *(кэшируется)*
-* `POST /api/v1/subscriptions/{subscription_id}/chart/send` — сгенерировать и отправить график в Telegram (внутренний вызов бота)
+* `POST /api/v1/subscriptions/{subscription_id}/chart/send` — внутренний эндпоинт для отправки графика в Telegram
 * `POST /api/v1/subscriptions/{subscription_id}/parse` — ручной запуск парсинга
 * `GET /api/v1/subscriptions/{subscription_id}/latest-price` — последняя цена
 * `PATCH /api/v1/subscriptions/{subscription_id}/target-price` — обновить целевую цену
@@ -213,7 +214,7 @@ docker compose run --rm migrate alembic upgrade head
 
 ## Sprint 1 ✅ (Фундамент)
 * Инфраструктура (Docker, PostgreSQL, Redis, RabbitMQ)
-* FastAPI REST API + Celery Worker/Beat
+* FastAPI REST API + Celery Worker
 * Парсер Ozon (Playwright)
 * Периодический мониторинг цен
 * Структурированное логирование + CLI клиент
@@ -224,7 +225,7 @@ docker compose run --rm migrate alembic upgrade head
 * Единый виджет UX (редактирование сообщений)
 * Graceful error handling + Cloudflare прокси
 
-## Sprint 3 ✅ (Производительность, стабность и новые фичи)
+## Sprint 3 ✅ (Производительность, стабильность и новые фичи)
 * ⚡️ Оптимизация парсинга Ozon (40с → 2-4с)
 * 🚀 Redis кэширование на уровне API с авто-инвалидацией
 * 🕒 Устранение дрейфа таймера (Self-healing scheduler)
@@ -233,7 +234,14 @@ docker compose run --rm migrate alembic upgrade head
 * ⏱ Настраиваемый пользователем cooldown (1-168 часов)
 * 📊 Графики изменения цен (Matplotlib, кэш Base64, делегирование отправки на API)
 
-## Sprint 4 (Планируется)
+## Sprint 3C ✅ (Технический долг и стабилизация стека)
+* 🔄 Синхронизация API и Bot (DRY): сохранение полноценного REST API при использовании единого Service Layer
+* 📉 Downsampling истории цен через `DATE_TRUNC` (защита от OOM при построении графиков)
+* ⏱️ Переход на умное планирование Celery (`eta` вместо Beat-метронома)
+* 🛡️ Внедрение Retry-политик для задач парсинга и Dead Letter Exchange (DLX) в RabbitMQ
+* 🧹 Удаление мертвого кода и фоновая очистка старой истории цен
+
+## Sprint 4 🚧 (Планируется)
 * **UX Polish & Resilience:** Глобальный аудит и устранение всех UX-тупиков при ошибках сети
 * **Actionable Notifications:** Кнопки действий (Отложить, Изменить цель, Архив) прямо в сообщении алерта
 * **Testing:** Покрытие Unit и Integration тестами критичных сервисов (70%+)
@@ -244,6 +252,6 @@ docker compose run --rm migrate alembic upgrade head
 
 # Статус проекта
 
-🚀 **Sprint 3B завершен.** 
+✅ **Sprint 3C завершен.** 
 
-Система оптимизирована, стабильна и обладает продвинутым UX. Парсинг работает молниеносно, API отвечает мгновенно благодаря кэшу, а планировщик гарантирует точность проверок. Реализованы гибкие уведомления и визуализация истории цен с обходом ограничений прокси. Активная разработка новых фич (Sprint 4) продолжается.
+Архитектура прошла критическое ревью и стабилизирована. Система оптимизирована: сохранен полноценный REST API (API-First), внедрено умное планирование задач (`eta`), добавлена защита от OOM при построении графиков (`DATE_TRUNC`), настроены retry-политики и DLX. Проект полностью готов к масштабированию и переходу к Sprint 4.

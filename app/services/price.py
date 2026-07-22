@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 from redis import Redis as SyncRedis
@@ -8,11 +9,7 @@ from app.repositories.price_history import PriceHistoryRepository
 
 
 class PriceCache:
-    """
-    Кэш для работы с Redis, инкапсулирующий sync/async логику.
-
-    Сам определяет какой клиент использовать (sync или async).
-    """
+    """Кэш для работы с Redis, инкапсулирующий синхронную и асинхронную логику."""
 
     def __init__(
         self, redis_sync: SyncRedis | None = None, redis_async: Redis | None = None
@@ -21,14 +18,14 @@ class PriceCache:
         self._redis_async = redis_async
 
     async def set(self, key: str, value: str, ttl: int) -> None:
-        """Сохранить значение в кэш."""
+        """Сохраняет строковое значение в кэш с заданным временем жизни."""
         if self._redis_sync:
             self._redis_sync.setex(key, ttl, value)
         elif self._redis_async:
             await self._redis_async.setex(key, ttl, value)
 
     async def get(self, key: str) -> str | None:
-        """Получить значение из кэша."""
+        """Получает строковое значение из кэша по ключу."""
         if self._redis_async:
             cached_price = await self._redis_async.get(key)
             if cached_price:
@@ -42,7 +39,7 @@ class PriceCache:
         return None
 
     async def delete(self, key: str) -> None:
-        """Удалить ключ из кэша (работает и для sync, и для async)."""
+        """Удаляет ключ из кэша синхронно или асинхронно."""
         if self._redis_async:
             await self._redis_async.delete(key)
         elif self._redis_sync:
@@ -50,6 +47,8 @@ class PriceCache:
 
 
 class PriceService:
+    """Сервис для управления ценами и историей цен с поддержкой кэширования."""
+
     def __init__(
         self,
         price_history_repository: PriceHistoryRepository,
@@ -59,22 +58,32 @@ class PriceService:
         self._price_cache = price_cache
 
     async def save_price(self, subscription_id: int, price: Decimal) -> None:
+        """Сохраняет новую цену в историю и инвалидирует кэш истории цен."""
         await self._price_history_repository.create(
             subscription_id=subscription_id, price=price
         )
         cache_key = f"price:latest:{subscription_id}"
         await self._price_cache.set(cache_key, str(price), REDIS_PRICE_TTL)
-
-        # 🚨 Инвалидируем кэш истории цен при сохранении новой цены
         await self._price_cache.delete(f"prices:history:{subscription_id}")
 
-    async def get_price_history(self, subscription_id: int):
-        return await self._price_history_repository.get_by_subscription_id(
-            subscription_id
+    async def get_price_history(
+        self, subscription_id: int, period: str = "7d"
+    ) -> list[dict]:
+        """Получает агрегированную историю цен за указанный период с кэшированием."""
+        cache_key = f"prices:history:{subscription_id}:{period}"
+        cached_data = await self._price_cache.get(cache_key)
+
+        if cached_data:
+            return json.loads(cached_data)
+
+        history = await self._price_history_repository.get_aggregated_price_history(
+            subscription_id, period
         )
+        await self._price_cache.set(cache_key, json.dumps(history, default=str), ttl=60)
+        return history
 
     async def get_latest_price(self, subscription_id: int) -> Decimal | None:
-        """Получить последнюю цену из кэша или БД"""
+        """Получает последнюю известную цену из кэша или базы данных."""
         cache_key = f"price:latest:{subscription_id}"
         cached_price = await self._price_cache.get(cache_key)
         if cached_price:
