@@ -140,6 +140,23 @@ async def get_archived_subscriptions(
     return [SubscriptionResponse.model_validate(item) for item in subscriptions]
 
 
+@router.post("/{subscription_id}/archive", response_model=SubscriptionResponse)
+async def archive_subscription(
+    subscription_id: int,
+    user_id: int,
+    service: SubscriptionService = Depends(get_subscription_service),
+) -> SubscriptionResponse:
+    """Архивирует активную подписку пользователя."""
+    archived = await service.archive_subscription(subscription_id, user_id)
+    if not archived:
+        raise HTTPException(
+            status_code=404, detail="Subscription not found or already archived"
+        )
+
+    subscription = await service.get_subscription(subscription_id)
+    return SubscriptionResponse.model_validate(subscription)
+
+
 @router.post("/{subscription_id}/reactivate", response_model=SubscriptionResponse)
 async def reactivate_subscription(
     subscription_id: int,

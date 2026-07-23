@@ -114,3 +114,13 @@ class SubscriptionService:
         if self._cache:
             await self._cache.delete(f"subs:user:{user_id}")
         return subscription
+
+    async def archive_subscription(self, subscription_id: int, user_id: int) -> bool:
+        """Архивирует подписку и инвалидирует кэш."""
+        archived = await self._subscription_repository.archive(subscription_id, user_id)
+        if archived:
+            await self._subscription_repository.session.commit()
+            if self._cache:
+                await self._cache.delete(f"subs:user:{user_id}")
+                await self._cache.delete(f"subs:archived:{user_id}")
+        return archived

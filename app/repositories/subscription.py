@@ -162,3 +162,16 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             )
         )
         return result.rowcount > 0
+
+    async def archive(self, subscription_id: int, user_id: int) -> bool:
+        """Архивировать активную подписку пользователя."""
+        result = await self.session.execute(
+            update(Subscription)
+            .where(
+                Subscription.id == subscription_id,
+                Subscription.user_id == user_id,
+                Subscription.status != SubscriptionStatus.ARCHIVED,
+            )
+            .values(status=SubscriptionStatus.ARCHIVED, is_active=False)
+        )
+        return result.rowcount > 0

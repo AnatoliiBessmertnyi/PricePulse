@@ -228,3 +228,15 @@ class HTTPClient:
             },
         )
         return response.status_code == 200
+
+    async def archive_subscription(self, subscription_id: int, user_id: int) -> bool:
+        """Архивировать подписку."""
+        response = await self._request(
+            "POST",
+            f"/api/v1/subscriptions/{subscription_id}/archive",
+            params={"user_id": user_id},
+        )
+        if response.status_code == 404:
+            return False
+        response.raise_for_status()
+        return True
