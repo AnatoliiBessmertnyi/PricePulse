@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 import httpx
 
@@ -43,20 +44,46 @@ class NotificationService:
             subscription.alert_sent = False
         return False
 
-    def notify_price_drop(self, subscription: Subscription) -> None:
-        """Отправить уведомление о снижении цены."""
+    def notify_price_drop(
+        self, subscription: Subscription, old_price: Decimal | None = None
+    ) -> None:
+        """Отправить уведомление о снижении цены с actionable кнопками."""
         if not self._token:
             logger.warning("notification_skipped", reason="telegram_bot_token_not_set")
             return
 
-        chat_id = subscription.user.chat_id
+        percent_text = ""
+        old_price_str = "N/A"
+        if old_price and old_price > 0:
+            percent_change = (
+                (old_price - subscription.current_price) / old_price
+            ) * 100
+            if percent_change > 0:
+                percent_text = f" ({percent_change:.1f}% ⬇️)"
+            old_price_str = f"{old_price:.2f}"
+
         text = (
             f"🔔 Цена снизилась!\n\n"
             f"📦 {subscription.product_name or 'Товар'}\n"
-            f"💰 Новая цена: {subscription.current_price} ₽\n"
+            f"💰 Было: {old_price_str} ₽\n"
+            f"🔥 Стало: {subscription.current_price} ₽{percent_text}\n"
             f"🎯 Ваша цель: {subscription.target_price} ₽\n\n"
             f"🔗 {subscription.product_url}"
         )
+        reply_markup: dict[str, Any] = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "🎯 Изменить цель",
+                        "callback_data": f"change_target_{subscription.id}",
+                    },
+                    {
+                        "text": "🗄 В архив",
+                        "callback_data": f"archive_notify_{subscription.id}",
+                    },
+                ],
+            ]
+        }
         url = f"{self._base_url}/bot{self._token}/sendMessage"
 
         try:
@@ -64,9 +91,10 @@ class NotificationService:
                 response = client.post(
                     url,
                     json={
-                        "chat_id": chat_id,
+                        "chat_id": subscription.user.chat_id,
                         "text": text,
                         "link_preview_options": {"is_disabled": True},
+                        "reply_markup": reply_markup,
                     },
                 )
                 response.raise_for_status()
@@ -76,7 +104,7 @@ class NotificationService:
             logger.error(
                 "price_drop_notification_failed",
                 subscription_id=subscription.id,
-                chat_id=chat_id,
+                chat_id=subscription.user.chat_id,
                 error=str(e),
                 error_type=type(e).__name__,
             )

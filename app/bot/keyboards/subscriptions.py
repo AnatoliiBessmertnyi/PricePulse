@@ -404,3 +404,48 @@ def get_chart_error_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+
+def get_price_drop_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура действий при уведомлении о снижении цены."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🎯 Изменить цель", callback_data=f"change_target_{subscription_id}"
+                ),
+                InlineKeyboardButton(
+                    "🗄 В архив", callback_data=f"archive_notify_{subscription_id}"
+                ),
+            ],
+        ]
+    )
+
+
+def get_target_price_error_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура при ошибке установки целевой цены."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🔄 Повторить", callback_data=f"set_target_select_{subscription_id}"
+                ),
+                InlineKeyboardButton("◀️ К списку", callback_data="menu_list"),
+            ],
+        ]
+    )
+
+
+def get_cooldown_error_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура при ошибке настройки интервала уведомлений."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🔄 Повторить",
+                    callback_data=f"set_cooldown_select_{subscription_id}",
+                ),
+                InlineKeyboardButton("◀️ К списку", callback_data="menu_list"),
+            ],
+        ]
+    )

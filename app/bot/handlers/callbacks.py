@@ -12,6 +12,7 @@ from app.bot.handlers.help import help_command
 from app.bot.handlers.list import archived_command, list_command
 from app.bot.handlers.set_target import set_target_menu
 from app.bot.keyboards.main_menu import get_main_menu_keyboard
+from app.bot.keyboards.subscriptions import get_cancel_target_keyboard
 from app.bot.utils.safe_edit import is_stale_callback_error
 from app.core.logging import get_logger
 
@@ -188,6 +189,50 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             page = int(callback_data.split("_")[-1])
             context.user_data["chart_page"] = page
             await chart_menu(update, context)
+
+        elif callback_data.startswith("change_target_"):
+            sub_id = int(callback_data.split("_")[-1])
+            context.user_data["target_subscription_id"] = sub_id
+
+            user_id = context.user_data.get("user_id")
+            async with HTTPClient() as client:
+                subs = await client.get_user_subscriptions(user_id)
+
+            sub = next((s for s in subs if s.get("id") == sub_id), None)
+            if sub:
+                product_name = sub.get("product_name") or "Без названия"
+                current_price = sub.get("current_price")
+                target_price = sub.get("target_price")
+
+                msg = f"🎯 Установка целевой цены\n\n📦 Товар: {product_name}\n"
+                if current_price is not None:
+                    msg += f"💰 Текущая цена: {float(current_price):,.2f} ₽\n"
+                if target_price is not None:
+                    msg += f"🎯 Текущая цель: {float(target_price):,.2f} ₽\n"
+                msg += "\nОтправьте новую целевую цену в рублях (например: 1500):"
+
+                await query.edit_message_text(
+                    msg, reply_markup=get_cancel_target_keyboard()
+                )
+                context.user_data["target_request_message_id"] = (
+                    query.message.message_id
+                )
+            else:
+                await query.answer("Подписка не найдена", show_alert=True)
+
+        elif callback_data.startswith("archive_notify_"):
+            sub_id = int(callback_data.split("_")[-1])
+            user_id = context.user_data.get("user_id")
+
+            async with HTTPClient() as client:
+                success = await client.archive_subscription(sub_id, user_id)
+
+            if success:
+                context.user_data["cached_subscriptions"] = None
+                await query.edit_message_text("🗄️ Подписка успешно архивирована.")
+                await query.answer("Архивировано")
+            else:
+                await query.answer("⚠️ Не удалось архивировать", show_alert=True)
 
         else:
             logger.warning("unknown_callback", callback_data=callback_data)
