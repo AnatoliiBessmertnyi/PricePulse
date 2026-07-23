@@ -89,3 +89,14 @@ class PriceHistoryRepository(BaseRepository[PriceHistory]):
         result = await self.session.execute(stmt)
         await self.session.commit()
         return result.rowcount
+
+    async def get_latest_price(self, subscription_id: int) -> float | None:
+        """Получает последнюю известную цену для подписки."""
+        stmt = (
+            select(PriceHistory.price)
+            .where(PriceHistory.subscription_id == subscription_id)
+            .order_by(PriceHistory.created_at.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar()
