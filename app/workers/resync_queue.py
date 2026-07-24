@@ -15,13 +15,12 @@ logger = get_logger(__name__)
 async def resync_queue() -> None:
     """
     Синхронизирует очередь Celery с текущим состоянием БД при старте системы.
-    Стратегия: Полная очистка очереди и пересборка на основе БД (Single Source of Truth).
-    Задачи сортируются по last_check_at, чтобы просроченные проверки выполнялись первыми.
+    Стратегия: Полная очистка очереди и пересборка на основе БД.
+    Задачи сортируются по last_check_at.
     """
     setup_logging(settings.log_level)
     logger.info("starting_queue_resync")
 
-    # 1. ОЧИСТКА ОЧЕРЕДИ: Не доверяем старым задачам, которые могли остаться после сбоя
     logger.info("purging_existing_tasks_from_queue")
     celery_app.control.purge()
 
@@ -32,7 +31,6 @@ async def resync_queue() -> None:
 
     try:
         async with async_session_factory() as session:
-            # 2. ПОЛУЧЕНИЕ И СОРТИРОВКА: nullsfirst() гарантирует, что новые подписки (без last_check_at) будут проверены первыми
             stmt = (
                 select(Subscription.id, Subscription.last_check_at)
                 .where(Subscription.is_active)
@@ -49,7 +47,6 @@ async def resync_queue() -> None:
                     eta = now
                 else:
                     expected_next = last_check_at + timedelta(seconds=interval_seconds)
-                    # Если время уже пришло или прошло, ставим сейчас. Иначе - в будущее.
                     eta = now if expected_next <= now else expected_next
 
                 celery_app.send_task("pricepulse.parse_price", args=[sub_id], eta=eta)

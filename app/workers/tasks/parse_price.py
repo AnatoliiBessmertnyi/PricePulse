@@ -52,35 +52,59 @@ async def _parse_price(subscription_id: int) -> None:
         async with async_session_factory() as session:
             repo = SubscriptionRepository(session)
             history_repo = PriceHistoryRepository(session)
-            
             sub_before = await repo.get(subscription_id)
             old_price = sub_before.current_price if sub_before else None
-            
+            price_source = "subscription.current_price"
             if old_price is None:
                 old_price = await history_repo.get_latest_price(subscription_id)
+                price_source = "price_history_fallback"
 
             service = await get_price_parsing_service(session)
-            is_active = await service.parse_subscription(subscription_id=subscription_id)
-            
+            is_active = await service.parse_subscription(
+                subscription_id=subscription_id
+            )
+
             if not is_active:
-                logger.info("parse_price_skipped_archived", subscription_id=subscription_id)
+                logger.info(
+                    "parse_price_skipped_archived", subscription_id=subscription_id
+                )
                 return
 
             subscription = await repo.get(subscription_id)
-            
-            if subscription and subscription.current_price and subscription.target_price:
+
+            if (
+                subscription
+                and subscription.current_price
+                and subscription.target_price
+            ):
                 subscription_service = SubscriptionService(repo)
                 notification_service = NotificationService(subscription_service)
-                
-                if notification_service.should_send_alert(subscription, subscription.current_price):
-                    notification_service.notify_price_drop(subscription, old_price=old_price)
+
+                if notification_service.should_send_alert(
+                    subscription, subscription.current_price
+                ):
+                    logger.info(
+                        "notification_price_data",
+                        subscription_id=subscription_id,
+                        old_price=float(old_price) if old_price else None,
+                        current_price=float(subscription.current_price),
+                        price_source=price_source,
+                    )
+
+                    notification_service.notify_price_drop(
+                        subscription, old_price=old_price
+                    )
                     await subscription_service.mark_alert_sent(subscription_id)
 
             duration_ms = round((time.monotonic() - start_time) * 1000, 2)
             logger.info(
                 "parse_price_completed",
                 subscription_id=subscription_id,
-                price=float(subscription.current_price) if subscription and subscription.current_price else None,
+                price=(
+                    float(subscription.current_price)
+                    if subscription and subscription.current_price
+                    else None
+                ),
                 duration_ms=duration_ms,
             )
 
@@ -88,7 +112,9 @@ async def _parse_price(subscription_id: int) -> None:
             await session.commit()
 
     except Exception as e:
-        logger.exception("parse_price_failed", subscription_id=subscription_id, error=str(e))
+        logger.exception(
+            "parse_price_failed", subscription_id=subscription_id, error=str(e)
+        )
         async with async_session_factory() as session:
             repo = SubscriptionRepository(session)
             await repo.mark_as_failed(subscription_id)

@@ -28,7 +28,10 @@ class PriceParsingService:
         self._parse_error_repository = parse_error_repository
 
     async def parse_subscription(self, subscription_id: int) -> bool:
-        """Возвращает True, если подписка активна, False если она была архивирована."""
+        """
+        Возвращает True, если подписка активна, False если она была архивирована.
+        Отвечает только за парсинг и сохранение данных, не за бизнес-логику уведомлений.
+        """
         subscription = await self._subscription_repository.get(subscription_id)
         if subscription is None:
             logger.warning("subscription_not_found", subscription_id=subscription_id)
@@ -46,19 +49,6 @@ class PriceParsingService:
             )
             subscription.current_price = price
             subscription.last_success_at = now
-
-            notification_service = NotificationService()
-            if notification_service.should_send_alert(subscription, price):
-                try:
-                    notification_service.notify_price_drop(subscription)
-                    subscription.alert_sent = True
-                    subscription.last_alert_at = now
-                except Exception as e:
-                    logger.error(
-                        "notification_error",
-                        subscription_id=subscription.id,
-                        error=str(e),
-                    )
 
             if product_data.product_name:
                 subscription.product_name = product_data.product_name
