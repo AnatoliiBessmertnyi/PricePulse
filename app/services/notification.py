@@ -54,22 +54,31 @@ class NotificationService:
 
         percent_text = ""
         old_price_str = "N/A"
+        current_price_str = "N/A"
+
         if old_price and old_price > 0:
             percent_change = (
                 (old_price - subscription.current_price) / old_price
             ) * 100
+            old_price_str = f"{old_price:.0f}"
+            current_price_str = f"{subscription.current_price:.0f}"
             if percent_change > 0:
                 percent_text = f" ({percent_change:.1f}% ⬇️)"
-            old_price_str = f"{old_price:.2f}"
+            elif percent_change < 0:
+                percent_text = f" ({abs(percent_change):.1f}% ⬆️)"
+
+        else:
+            current_price_str = f"{subscription.current_price:.0f}"
 
         text = (
             f"🔔 Цена снизилась!\n\n"
             f"📦 {subscription.product_name or 'Товар'}\n"
             f"💰 Было: {old_price_str} ₽\n"
-            f"🔥 Стало: {subscription.current_price} ₽{percent_text}\n"
-            f"🎯 Ваша цель: {subscription.target_price} ₽\n\n"
+            f"🔥 Стало: {current_price_str} ₽{percent_text}\n"
+            f"🎯 Ваша цель: {subscription.target_price:.0f} ₽\n\n"
             f"🔗 {subscription.product_url}"
         )
+
         reply_markup: dict[str, Any] = {
             "inline_keyboard": [
                 [
