@@ -29,6 +29,7 @@ from app.bot.handlers.set_target import (
     cancel_set_target,
     handle_target_price,
     set_target_command,
+    start_change_target_from_notification,
 )
 from app.bot.handlers.start import start_command
 from app.bot.states import (
@@ -143,6 +144,9 @@ def main():
                 set_target_command, pattern=r"^set_target_select_\d+$"
             ),
             CallbackQueryHandler(set_target_command, pattern=r"^set_target_new_\d+$"),
+            CallbackQueryHandler(
+                start_change_target_from_notification, pattern=r"^change_target_\d+$"
+            ),
         ],
         states={
             WAITING_FOR_TARGET_PRICE: [

@@ -10,9 +10,12 @@ from app.bot.handlers.chart import chart_menu, handle_chart_period_change, show_
 from app.bot.handlers.delete import confirm_delete, delete_command, execute_delete
 from app.bot.handlers.help import help_command
 from app.bot.handlers.list import archived_command, list_command
-from app.bot.handlers.set_target import set_target_menu
+from app.bot.handlers.set_target import (
+    set_target_menu,
+    start_change_target_from_notification,
+)
 from app.bot.keyboards.main_menu import get_main_menu_keyboard
-from app.bot.keyboards.subscriptions import get_cancel_target_keyboard
+from app.bot.keyboards.subscriptions import get_price_drop_keyboard
 from app.bot.utils.safe_edit import is_stale_callback_error
 from app.core.logging import get_logger
 
@@ -20,14 +23,10 @@ logger = get_logger(__name__)
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Обработчик нажатий на inline кнопки
-
-    Роутинг callback queries к соответствующим обработчикам.
-    """
+    """Обработчик нажатий на inline кнопки."""
     query = update.callback_query
     if not query:
-        return
+        return None
 
     await query.answer("⏳")
     callback_data = query.data
@@ -192,33 +191,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         elif callback_data.startswith("change_target_"):
             sub_id = int(callback_data.split("_")[-1])
-            context.user_data["target_subscription_id"] = sub_id
+            return await start_change_target_from_notification(update, context, sub_id)
 
-            user_id = context.user_data.get("user_id")
-            async with HTTPClient() as client:
-                subs = await client.get_user_subscriptions(user_id)
-
-            sub = next((s for s in subs if s.get("id") == sub_id), None)
-            if sub:
-                product_name = sub.get("product_name") or "Без названия"
-                current_price = sub.get("current_price")
-                target_price = sub.get("target_price")
-
-                msg = f"🎯 Установка целевой цены\n\n📦 Товар: {product_name}\n"
-                if current_price is not None:
-                    msg += f"💰 Текущая цена: {float(current_price):,.2f} ₽\n"
-                if target_price is not None:
-                    msg += f"🎯 Текущая цель: {float(target_price):,.2f} ₽\n"
-                msg += "\nОтправьте новую целевую цену в рублях (например: 1500):"
-
-                await query.edit_message_text(
-                    msg, reply_markup=get_cancel_target_keyboard()
-                )
-                context.user_data["target_request_message_id"] = (
-                    query.message.message_id
-                )
-            else:
-                await query.answer("Подписка не найдена", show_alert=True)
+        elif callback_data.startswith("cancel_notify_target_"):
+            sub_id = int(callback_data.split("_")[-1])
+            context.user_data.pop("target_subscription_id", None)
+            context.user_data.pop("from_notification", None)
+            context.user_data.pop("target_request_message_id", None)
+            await query.edit_message_text(
+                "❌ Изменение целевой цены отменено.\n\n"
+                "Подписка осталась без изменений. Вы можете нажать "
+                "«🎯Изменить цель» снова или «🗄️Архивировать подписку»",
+                reply_markup=get_price_drop_keyboard(sub_id),
+            )
+            return -1
 
         elif callback_data.startswith("archive_notify_"):
             sub_id = int(callback_data.split("_")[-1])
@@ -229,7 +215,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
             if success:
                 context.user_data["cached_subscriptions"] = None
-                await query.edit_message_text("🗄️ Подписка успешно архивирована.")
+                await query.edit_message_text(
+                    "🗄️Подписка успешно перемещена в архив.\n\n"
+                    "Мониторинг цен приостановлен. Вы всегда можете "
+                    "восстановить её в разделе «🗄️Архивные подписки»."
+                )
                 await query.answer("Архивировано")
             else:
                 await query.answer("⚠️ Не удалось архивировать", show_alert=True)
@@ -243,7 +233,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "callback_handler_failed", callback_data=callback_data, error=str(e)
         )
         if is_stale_callback_error(e):
-            return
+            return None
 
         with contextlib.suppress(Exception):
             await query.answer(

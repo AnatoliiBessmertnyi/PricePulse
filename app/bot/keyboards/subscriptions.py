@@ -10,19 +10,7 @@ def get_subscriptions_list_keyboard(
     action: str = "view",
     show_refresh: bool = False,
 ) -> InlineKeyboardMarkup:
-    """
-    Создать клавиатуру для списка подписок с пагинацией
-
-    Args:
-        subscriptions: Список подписок на текущей странице
-        page: Текущая страница (0-indexed)
-        total_pages: Общее количество страниц
-        action: Тип действия ("view" для просмотра, "delete" для удаления)
-        show_refresh: Показать кнопку "Обновить"
-
-    Returns:
-        InlineKeyboardMarkup с кнопками навигации
-    """
+    """Клавиатура списка подписок с пагинацией и действиями."""
     keyboard = []
 
     if action == "delete":
@@ -92,15 +80,7 @@ def get_subscriptions_list_keyboard(
 
 
 def get_delete_confirmation_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
-    """
-    Создать клавиатуру подтверждения удаления
-
-    Args:
-        subscription_id: ID подписки для удаления
-
-    Returns:
-        InlineKeyboardMarkup с кнопками подтверждения/отмены
-    """
+    """Клавиатура подтверждения удаления подписки."""
     keyboard = [
         [
             InlineKeyboardButton(
@@ -114,12 +94,7 @@ def get_delete_confirmation_keyboard(subscription_id: int) -> InlineKeyboardMark
 
 
 def get_cancel_keyboard() -> InlineKeyboardMarkup:
-    """
-    Создать клавиатуру с кнопкой отмены
-
-    Returns:
-        InlineKeyboardMarkup с кнопкой отмены
-    """
+    """Клавиатура отмены добавления подписки."""
     keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_add")]]
     return InlineKeyboardMarkup(keyboard)
 
@@ -127,17 +102,7 @@ def get_cancel_keyboard() -> InlineKeyboardMarkup:
 def get_target_subscription_keyboard(
     subscriptions: list[dict], page: int = 0, total_pages: int = 1
 ) -> InlineKeyboardMarkup:
-    """
-    Создать клавиатуру для выбора подписки при установке target_price
-
-    Args:
-        subscriptions: Список подписок на текущей странице
-        page: Текущая страница (0-indexed)
-        total_pages: Общее количество страниц
-
-    Returns:
-        InlineKeyboardMarkup с кнопками подписок
-    """
+    """Клавиатура выбора подписки для установки целевой цены."""
     keyboard = []
     for sub in subscriptions:
         sub_id = sub.get("id")
@@ -195,22 +160,13 @@ def get_target_subscription_keyboard(
 
 
 def get_cancel_target_keyboard() -> InlineKeyboardMarkup:
-    """
-    Создать клавиатуру с кнопкой отмены для установки target_price
-
-    Returns:
-        InlineKeyboardMarkup с кнопкой отмены
-    """
+    """Клавиатура отмены установки целевой цены из меню."""
     keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_target")]]
     return InlineKeyboardMarkup(keyboard)
 
 
 def get_subscription_created_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
-    """
-    Клавиатура после успешного создания подписки.
-
-    Предлагает установить целевую цену или вернуться в главное меню.
-    """
+    """Клавиатура после успешного создания подписки."""
     keyboard = [
         [
             InlineKeyboardButton(
@@ -236,7 +192,7 @@ def get_empty_subscriptions_keyboard() -> InlineKeyboardMarkup:
 def get_archived_subscriptions_keyboard(
     archived_subs: list[dict],
 ) -> InlineKeyboardMarkup:
-    """Клавиатура для списка архивных подписок."""
+    """Клавиатура списка архивных подписок."""
     keyboard = []
     for sub in archived_subs:
         name = (sub.get("product_name") or "Без названия")[:40]
@@ -256,6 +212,7 @@ def get_archived_subscriptions_keyboard(
 
 
 def get_empty_archived_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для пустого списка архивных подписок."""
     return InlineKeyboardMarkup(
         [[InlineKeyboardButton("🏠 Назад в меню", callback_data="back_main")]]
     )
@@ -264,7 +221,7 @@ def get_empty_archived_keyboard() -> InlineKeyboardMarkup:
 def get_cooldown_subscription_keyboard(
     subscriptions: list[dict], page: int = 0, total_pages: int = 1
 ) -> InlineKeyboardMarkup:
-    """Клавиатура для выбора подписки при настройке cooldown."""
+    """Клавиатура выбора подписки для настройки интервала уведомлений."""
     keyboard = []
     for sub in subscriptions:
         sub_id = sub.get("id")
@@ -311,7 +268,7 @@ def get_cooldown_subscription_keyboard(
 def get_chart_subscription_keyboard(
     subscriptions: list[dict], page: int = 0, total_pages: int = 1
 ) -> InlineKeyboardMarkup:
-    """Клавиатура для выбора подписки при просмотре графика."""
+    """Клавиатура выбора подписки для просмотра графика цен."""
     keyboard = []
     for sub in subscriptions:
         sub_id = sub.get("id")
@@ -351,7 +308,7 @@ def get_chart_subscription_keyboard(
 def get_chart_period_keyboard(
     subscription_id: int, current_period: str
 ) -> InlineKeyboardMarkup:
-    """Клавиатура выбора периода под графиком."""
+    """Клавиатура выбора периода для графика цен."""
     btn_7d = "✅ 7 дней" if current_period == "7d" else "7 дней"
     btn_30d = "✅ 30 дней" if current_period == "30d" else "30 дней"
     btn_all = "✅ Всё время" if current_period == "all" else "Всё время"
@@ -379,7 +336,7 @@ def get_chart_period_keyboard(
 
 
 def get_empty_delete_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура, когда нечего удалять."""
+    """Клавиатура для пустого списка удаляемых подписок."""
     keyboard = [
         [InlineKeyboardButton("➕ Добавить подписку", callback_data="menu_add")],
         [InlineKeyboardButton("◀️ Назад в меню", callback_data="back_main")],
@@ -388,7 +345,7 @@ def get_empty_delete_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_chart_error_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура для обработки ошибки при построении графика."""
+    """Клавиатура обработки ошибки построения графика."""
     return InlineKeyboardMarkup(
         [
             [
@@ -407,7 +364,7 @@ def get_chart_error_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
 
 
 def get_price_drop_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура действий при уведомлении о снижении цены."""
+    """Клавиатура действий в уведомлении о снижении цены."""
     return InlineKeyboardMarkup(
         [
             [
@@ -423,7 +380,7 @@ def get_price_drop_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
 
 
 def get_target_price_error_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура при ошибке установки целевой цены."""
+    """Клавиатура обработки ошибки установки целевой цены."""
     return InlineKeyboardMarkup(
         [
             [
@@ -437,7 +394,7 @@ def get_target_price_error_keyboard(subscription_id: int) -> InlineKeyboardMarku
 
 
 def get_cooldown_error_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура при ошибке настройки интервала уведомлений."""
+    """Клавиатура отмены изменения цели из уведомления."""
     return InlineKeyboardMarkup(
         [
             [
@@ -447,5 +404,20 @@ def get_cooldown_error_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
                 ),
                 InlineKeyboardButton("◀️ К списку", callback_data="menu_list"),
             ],
+        ]
+    )
+
+
+def get_notification_target_cancel_keyboard(
+    subscription_id: int,
+) -> InlineKeyboardMarkup:
+    """Клавиатура отмены изменения цели прямо из уведомления."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "❌ Отмена", callback_data=f"cancel_notify_target_{subscription_id}"
+                )
+            ]
         ]
     )
